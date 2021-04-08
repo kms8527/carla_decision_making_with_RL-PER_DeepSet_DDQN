@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ChangeListManager">
+    <list default="true" id="882d62b1-9004-42d3-9ad9-3a9be8b261af" name="Default Changelist" comment="">
+      <change afterPath="$PROJECT_DIR$/.idea/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/carla_decision_making_with_RL-DDQN(1).iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/.idea/.gitignore" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/.idea/RL_decision.iml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/.idea/misc.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/.idea/modules.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/.idea/vcs.xml" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/Controller.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/HUD.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/KeyboardShortCutSetting.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/SumTree.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/decision_trainer.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/model.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/scenario.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/sensor_class.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/텐서보드 켜기.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617830261.a.8099.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617830334.a.8157.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617850640.a.18116.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617850664.a.18159.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617850673.a.18194.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617850846.a.18286.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617850953.a.18382.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617850956.a.18419.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617850971.a.18457.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617850985.a.18490.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851015.a.18612.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851048.a.18661.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851093.a.18708.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851177.a.18784.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851216.a.18847.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851316.a.18918.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851397.a.18973.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851412.a.19099.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851614.a.19256.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851625.a.19303.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851722.a.19359.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851900.a.19448.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851924.a.19514.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617851945.a.19562.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617852116.a.19666.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617852185.a.19722.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617852370.a.19792.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617852611.a.19863.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617852883.a.19933.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853215.a.20000.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853291.a.20057.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853451.a.20120.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853532.a.20180.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853579.a.20237.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853642.a.20293.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853672.a.20341.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853721.a.20390.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853871.a.20479.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617853895.a.20541.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617854185.a.20612.0" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/runs/events.out.tfevents.1617854244.a.20678.0" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="ProjectId" id="1qrGF6ER2YQ1ubShgN0U0UyI5z5" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">
+    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
+    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
+    <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
+    <property name="WebServerToolWindowFactoryState" value="false" />
+    <property name="last_opened_file_path" value="$PROJECT_DIR$" />
+    <property name="settings.editor.selected.configurable" value="preferences.keymap" />
+  </component>
+  <component name="RunManager">
+    <configuration name="main_decision" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="carla_decision_making_with_RL-DDQN(1)" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <EXTENSION ID="PythonCoverageRunConfigurationExtension" runner="coverage.py" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.main_decision" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="882d62b1-9004-42d3-9ad9-3a9be8b261af" name="Default Changelist" comment="" />
+      <created>1617830189253</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1617830189253</updated>
+      <workItem from="1617830190796" duration="177000" />
+      <workItem from="1617830473714" duration="10714000" />
+      <workItem from="1617859569094" duration="22000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="XDebuggerManager">
+    <watches-manager>
+      <configuration name="PythonConfigurationType">
+        <watch expression="last_lane_waypoint.lane_id " language="Python" />
+        <watch expression="self.index" language="Python" />
+        <watch expression="len(self.lane_change_point)" language="Python" />
+      </configuration>
+    </watches-manager>
+  </component>
+  <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/carla_decision_making_with_RL_DDQN_1_$main_decision.coverage" NAME="main_decision Coverage Results" MODIFIED="1617859445847" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
+  </component>
+</project>

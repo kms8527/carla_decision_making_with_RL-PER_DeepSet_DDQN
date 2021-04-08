@@ -1,0 +1,5 @@
+import carla
+
+"""
+validation scenario
+"""
