@@ -32,7 +32,7 @@ Transition = namedtuple(
 
 class ReplayBuffer:
     def __init__(self,batch_size):
-        self.buffer_limit = 3000
+        self.buffer_limit = 10000
         self.buffer = collections.deque(maxlen = self.buffer_limit)
         self.priority = []
         self.batch_size = batch_size
@@ -105,7 +105,7 @@ class decision_driving_Agent:
         self.inputs_shape = inputs_shape
         self.num_actions = num_actions
         self.is_training = is_training
-        self.batch_size = 32
+        self.batch_size = 64
         self.selection_method = None
         self.gamma = 0.9999
         self.buffer = ReplayBuffer(self.batch_size)
@@ -114,8 +114,8 @@ class decision_driving_Agent:
         self.target_model = DQN(self.inputs_shape,20,3,80,self.num_actions,self.batch_size,self.extra_num).cuda()
         self.epsilon = 1
 
-        self.epsilon_min = 0.001
-        self.decaying = 0.999
+        self.epsilon_min = 0.0001
+        self.decaying = 0.99
         self.learning_rate =0.001
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         self.loss = 9999999999
@@ -355,7 +355,7 @@ class decision_driving_Agent:
 
         ##  forward  ##
         # print("start forward")
-        # self.model.eval()
+        self.model.eval()
         self.target_model.eval()
 
         next_tartget_q = torch.zeros(self.batch_size).cuda()
@@ -368,7 +368,7 @@ class decision_driving_Agent:
         non_final_a_m = a_m[non_final_mask]
         strait_action_mask = [False if ego_lane % 1 == 0 else index for index, ego_lane in enumerate(non_final_x1_static[0:-1:3])]
         non_final_a_m = [non_final_a_m[k].item() if k != False else 1 for k in strait_action_mask]
-        # 다음 상태가 있는 것만을 걸러내고, size 32를 32*1로 변환
+        # 다음 상태가 있는 것만을 걸러내고, size 64를 64*1로 변환
         non_final_a_m = torch.tensor(non_final_a_m).cuda()
         a_m_non_final_next_states = non_final_a_m.view(-1, 1)
 
@@ -376,28 +376,12 @@ class decision_driving_Agent:
         # detach() 메서드로 값을 꺼내옴
         # squeeze() 메서드로 size[minibatch*1]을 [minibatch]로 변환
         next_tartget_q[non_final_mask] = self.target_model(non_final_s1,non_final_x1_static).gather(1, a_m_non_final_next_states).detach().squeeze()
-
         q_value = q_values.gather(1, a.unsqueeze(1) + 1).squeeze(1)
-        # print(next_q_values)
-        # next_q_value = next_q_values.gather(1, next_q_values.max(1)[1].unsqueeze(1)).squeeze(1)
         expected_state_action_values = r + self.gamma * next_tartget_q
-
-        # expected_q_values = r + self.gamma * next_q_value
-        # print("expected_q_values :" , expected_q_values[0], "q_value :", q_value[0])
-        # print("finished forward")
         self.model.train()
         # 0 : 좌회전 , 1 : 직진 : 2 : 우회전 시 Q value
-        # self.loss = (q_value - expected_q_values.detach()).pow(2).mean()
-
         # self.loss = F.smooth_l1_loss(q_value, expected_state_action_values)
         self.loss = F.mse_loss(q_value, expected_state_action_values).mean()
-
-        # print(" loss : ", self.loss, "q_value :", q_value.mean())
-        # next_q_state_values = self.target_model(s1).cuda()
-        # if self.loss >2.0:
-        #     print(self.loss)
-        #     print(a)
-        # off-policy
 
         # zero the gradients after updating
         self.optimizer.zero_grad()
@@ -419,6 +403,10 @@ class decision_driving_Agent:
             pass
         else:
             print("increase loss")
+            self.learning_rate /=0.5
+            self.learning_rate = max(self.learning_rate,0.00001)
+
+
 
 
 

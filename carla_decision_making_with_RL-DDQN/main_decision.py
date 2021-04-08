@@ -25,7 +25,7 @@ from decision_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
-writer = SummaryWriter("/home/a/per_deepset-Q_ddqn/")
+writer = SummaryWriter()
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -132,6 +132,7 @@ class CarlaEnv():
 
     def restart(self):
         self.decision = 0
+        self.update_lane = 0
         self.pre_decision = 0
         self.simul_time = time.time()
         self.distance_memory = None
@@ -593,7 +594,7 @@ class CarlaEnv():
             print("lane left collision")
             reward = -3
         else:
-            reward = 0.05-1/2*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel)-plc
+            reward = 0.09-1/2*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel)-plc
             # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
         # print(reward)
         # if self.decision_changed == True:
@@ -740,9 +741,11 @@ class CarlaEnv():
         if decision == 1 :
             self.ego_Lane += 0.5
             self.pre_decision = 1.0
+            self.can_lane_change = False
         elif decision ==-1:
             self.ego_Lane += -0.5
             self.pre_decision = -1.0
+            self.can_lane_change = False
         else:
             pass
 
@@ -922,6 +925,22 @@ class CarlaEnv():
     #                 return False
     #     return True
 
+
+    def loose_safety_check(self,decision,safe_lane_change_again_time = 3):
+        if (time.time()-self.lane_change_time) <= safe_lane_change_again_time:
+            self.can_lane_change = False
+        else:
+            self.can_lane_change = True
+
+        if decision != 0:
+            if self.can_lane_change == False:
+                return 0
+            else:
+                # self.can_lane_change = False
+                self.lane_change_time = time.time()
+                return decision
+        else:
+            return 0
 
     def safety_check(self,decision, safe_lane_change_again_time=3):
         remained_action_list = None
@@ -1311,7 +1330,7 @@ class CarlaEnv():
 
 
                     before_safety_decision = self.decision
-                    self.decision = self.safety_check(self.decision)
+                    self.decision = self.loose_safety_check(self.decision)
 
 
 
@@ -1347,10 +1366,15 @@ class CarlaEnv():
                         break
 
                     else:
-                      [__, _, decision, reward, next_state, next_x_static, done] =  tmp
+
+                        # decision == 0 or (decision != 0 and self.ego_Lane / decision != 0):
+                        # pass
+                        [__, _, decision, reward, next_state, next_x_static, done] =  tmp
 
                     if done:
                         sample = [state, x_static, decision, reward, None, None, done]
+                        x_static[0] = self.update_lane
+                        # print("decision: ", decision, "ego_lane:", self.update_lane)
                         if epoch == epoch_init:
                             pass
                         else:
@@ -1375,6 +1399,7 @@ class CarlaEnv():
                         n=300.0
 
                         print("epsilon :", self.agent.epsilon)
+                        print("learning rate:",self.agent.learning_rate)
                         print("epoch : ", epoch, "누적 보상 : ", self.accumulated_reward)
 
                         # if epoch == 50:
@@ -1393,7 +1418,7 @@ class CarlaEnv():
                             self.agent.ddqn_learning()
                             for i in range(int(n)):
                                 # self.offline_learning_epoch +=1
-                                self.acummulated_loss += self.agent.loss
+                                self.acummulated_loss += sel.agent.loss
                             if epoch != epoch_init:
                                 writer.add_scalar('Loss', self.acummulated_loss / n, epoch)
                         if epoch != epoch_init:
@@ -1409,9 +1434,14 @@ class CarlaEnv():
                         # print("toggle_camera finished")
 
                     else:
+
+                        #     raise Exception('invalid data')
                         sample = [state, x_static, self.decision, reward, next_state, next_x_static, done]
                         # sample = [state, x_static, pre_decision, reward, next_state, next_x_static, done]
                         x_static[0] = self.update_lane
+                        # print("decision: ", decision , "ego_lane:", self.update_lane)
+
+
                         if epoch == epoch_init: #
                             pass
                         else:
