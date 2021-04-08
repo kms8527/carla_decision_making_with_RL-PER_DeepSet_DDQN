@@ -25,7 +25,7 @@ from decision_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
-writer = SummaryWriter('/home/a/carla_decision_making_with_RL-DDQN(1)/runs/')
+writer = SummaryWriter("/home/a/per_deepset-Q_ddqn/")
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -1254,7 +1254,7 @@ class CarlaEnv():
                 # pygame.display.flip()
 
                 self.spectator.set_transform(
-                    carla.Transform(self.extra_list[-1].get_transform().location + carla.Location(z=100),
+                    carla.Transform(self.player.get_transform().location + carla.Location(z=100),
                                     carla.Rotation(pitch=-90)))
 
                 ## Get max lane ##
