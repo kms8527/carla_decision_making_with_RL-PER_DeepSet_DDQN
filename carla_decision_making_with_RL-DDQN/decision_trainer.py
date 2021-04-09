@@ -244,7 +244,7 @@ class decision_driving_Agent:
                 self.q_value = self.model(state,x_static)
                 action =  int(self.q_value.argmax().item())-1
 
-            print("Q: ",self.q_value, "q_ACTION:",action)
+            # print("Q: ",self.q_value, "q_ACTION:",action)
 
             # print(self.q_value)
 
@@ -253,7 +253,7 @@ class decision_driving_Agent:
         else:
             self.selection_method = 'random'
             action = random.randrange(self.num_actions)-1
-            print("random action :", action)
+            # print("random action :", action)
         return action
 
     def learning(self):  # sample에서 뽑고 backpropagation 하는 과정

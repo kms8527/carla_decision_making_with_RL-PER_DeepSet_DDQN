@@ -53,7 +53,7 @@ class CarlaEnv():
     font = pygame.font.init()
 
     def __init__(self,world):
-        self.safety_mode = True
+        self.safety_mode = False
         #화면 크기
         self.start_epoch = True
         self.input_size = 4  # dr dv da dl
@@ -104,7 +104,7 @@ class CarlaEnv():
         self.right_search_radius = None
         self.decision_changed = False
         self.check = 0
-        self.update_lane =0
+        self.current_ego_lane =0
 
         ## visualize all waypoints ##
         # for n, p in enumerate(self.spawn_waypoints):
@@ -132,6 +132,7 @@ class CarlaEnv():
         self.main()
 
     def restart(self):
+        self.check = 0
         self.decision = 0
         self.pre_decision = 0
         self.decision_changed = False
@@ -581,28 +582,25 @@ class CarlaEnv():
             print("simultime done")
             done = True
             reward = 0
-        # elif self.max_Lane_num < self.ego_Lane:
-        #     done = True
-        #     reward = -3
+        elif decision == 1 and self.ego_Lane >= self.max_Lane_num:  # dont leave max lane
+            done = True
+            print("lane right collision")
+            reward = -3
+        elif decision == -1 and self.ego_Lane <= 1:  # dont leave min lane
+            done = True
+            print("lane left collision")
+            reward = -3
+        elif next_x_static[2] < 0 and self.ego_Lane > self.max_Lane_num :
+            done = True
+            # print("ego_Lane",self.ego_Lane,"mam lane",self.max_Lane_num)
+            print("Agent get into exit, Done")
+            reward = -3
         else:
             reward = 0.09-1/2*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel)-plc
             # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
-        if self.safety_mode == False:
-            if decision == 1 and self.ego_Lane >= self.max_Lane_num - 0.5:  # dont leave max lane
-                done = True
-                print("lane right collision")
-                reward = -3
-            elif decision == -1 and self.ego_Lane <= 1.5:  # dont leave min lane
-                done = True
-                print("lane left collision")
-                reward = -3
-        else:
-            if next_x_static[2] < 0 and self.ego_Lane >= self.max_Lane_num - 0.5:  # dont leave max lane
-                done = True
-                print("Agent get into exit, Done")
-                reward = -3
-            elif decision == -1 and self.ego_Lane <= 1.5:  # dont leave min lane
-                assert False, "Agent leaves min lane"
+
+        # print("ego:", self.ego_Lane, "max_lane", self.max_Lane_num,"decision:", decision)
+
 
         # print(reward)
         # if self.decision_changed == True:
@@ -736,7 +734,7 @@ class CarlaEnv():
                 # print("finish left")
                 self.ego_Lane = math.floor(self.ego_Lane) / 1.0
 
-        self.update_lane = self.ego_Lane
+        self.current_ego_lane = self.ego_Lane
 
         if decision == 1 :
             self.ego_Lane += 0.5
@@ -804,23 +802,23 @@ class CarlaEnv():
         if last_lane_waypoint is not None:
             while last_lane_waypoint.lane_id > -4:  # get waypoint of forth's lane
                 #### for debug
-                pre_last_lane_waypoint = last_lane_waypoint
-                self.check = pre_last_lane_waypoint
+                # pre_last_lane_waypoint = last_lane_waypoint
+                # self.check = pre_last_lane_waypoint
                 #### for debug
                 last_lane_waypoint = last_lane_waypoint.get_right_lane()
 
                 if last_lane_waypoint is None:
-                    if abs(pre_last_lane_waypoint.lane_id) == -1 and abs(my_waypoint.lane_id) == -1:
+                    if abs(my_waypoint.lane_id) == 1 and self.ego_Lane >3:
                         return my_waypoint
                     else: ## for debug
-                        print("pre_last_lane_waypoint1 : ", pre_last_lane_waypoint.lane_id, "my_waypoint_id1:",
-                              my_waypoint.lane_id)  ## for debug
+                        print("getting last lane false")
+                        # print("pre_last_lane_waypoint1 : ", pre_last_lane_waypoint.lane_id, "my_waypoint_id1:",
+                        #       my_waypoint.lane_id,"ego_lane:",self.ego_Lane,"max_lane:",self.max_Lane_num)  ## for debug
                         return False
 
             # print("lane id : ", last_lane_waypoint.lane_id)
         else:
-            print("pre_last_lane_waypoint2 : ", self.check, "my_waypoint_id2:", my_waypoint.lane_id)
-
+            print("getting last lane false2")
             return False
         # self.world.debug.draw_string(last_lane_waypoint.transform.location,
         #                                      'o', draw_shadow=True,
@@ -1190,7 +1188,7 @@ class CarlaEnv():
 
     def main(self):
 
-        PATH = "/home/a/carla_decision_making_with_RL-PER_DeepSet_DDQN/wegiths/"
+        PATH = "/home/a/per_deepset-Q_ddqn/"
         print(torch.cuda.get_device_name())
         clock = pygame.time.Clock()
         Keyboardcontrol = KeyboardControl(self, False)
@@ -1342,8 +1340,21 @@ class CarlaEnv():
                     else:
                         self.decision = self.agent.act(state, x_static)
 
+                        if time.time()-self.simul_time>self.check+1:
+                            if self.check ==3:
+                                self.check = 9999
+                            self.check +=10
+
+                            self.decision = 1
+                        else:
+                            self.decision = 0
+
                     before_safety_decision = self.decision
-                    self.decision = self.safety_check(self.decision)
+                    if self.safety_mode == True:
+                        self.decision = self.safety_check(self.decision)
+                    else:
+                        self.decision = self.loose_safety_check(self.decision)
+
                     # print("before:", before_safety_decision)
                     # print("after:", self.decision)
 
@@ -1383,8 +1394,8 @@ class CarlaEnv():
 
                     if done:
                         sample = [state, x_static, decision, reward, None, None, done]
-                        x_static[0] = self.update_lane
-                        # print("decision: ", decision, "ego_lane:", self.update_lane)
+                        x_static[0] = self.current_ego_lane
+                        # print("decision: ", decision, "ego_lane:", self.current_ego_lane)
 
                         if epoch == epoch_init:
                             pass
@@ -1394,7 +1405,7 @@ class CarlaEnv():
                             # if decision !=0 and (next_x_static[0]%1 ==0 or x_static[0]%1 !=0):
                             #     print("h")
                             self.agent.buffer.append(sample)
-                            # print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
+                            print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
                             self.agent.memorize_td_error(0)
 
                             if self.decision_changed:
@@ -1449,8 +1460,8 @@ class CarlaEnv():
                     else:
                         sample = [state, x_static, self.decision, reward, next_state, next_x_static, done]
                         # sample = [state, x_static, pre_decision, reward, next_state, next_x_static, done]
-                        x_static[0] = self.update_lane
-                        # print("decision: ", decision, "ego_lane:", self.update_lane)
+                        x_static[0] = self.current_ego_lane
+                        # print("decision: ", decision, "ego_lane:", self.current_ego_lane)
                         if epoch == epoch_init: #
                             pass
                         else:
@@ -1459,7 +1470,7 @@ class CarlaEnv():
                             # if decision !=0 and (next_x_static[0]%1 ==0 or x_static[0]%1 !=0):
                             #     print("h")
                             self.agent.buffer.append(sample)
-                            # print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
+                            print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
 
                             self.agent.memorize_td_error(0)
                             if self.decision_changed:
