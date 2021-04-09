@@ -1241,6 +1241,7 @@ class CarlaEnv():
             epoch_init = checkpoint['epoch']
             self.agent.epsilon = checkpoint['epsilon']
 
+        # print("h")
 
         # self.agent.is_training = False
         print("epoch : ",epoch_init)
@@ -1405,7 +1406,7 @@ class CarlaEnv():
                             # if decision !=0 and (next_x_static[0]%1 ==0 or x_static[0]%1 !=0):
                             #     print("h")
                             self.agent.buffer.append(sample)
-                            print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
+                            # print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
                             self.agent.memorize_td_error(0)
 
                             if self.decision_changed:
@@ -1470,7 +1471,7 @@ class CarlaEnv():
                             # if decision !=0 and (next_x_static[0]%1 ==0 or x_static[0]%1 !=0):
                             #     print("h")
                             self.agent.buffer.append(sample)
-                            print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
+                            # print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
 
                             self.agent.memorize_td_error(0)
                             if self.decision_changed:
