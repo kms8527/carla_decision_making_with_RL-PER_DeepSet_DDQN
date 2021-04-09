@@ -115,7 +115,7 @@ class decision_driving_Agent:
         self.epsilon = 1
 
         self.epsilon_min = 0.0001
-        self.decaying = 0.99
+        self.decaying = 0.999
         self.learning_rate =0.001
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         self.loss = 9999999999
@@ -403,14 +403,8 @@ class decision_driving_Agent:
             pass
         else:
             print("increase loss")
-            self.learning_rate /=0.5
+            self.learning_rate /=2
             self.learning_rate = max(self.learning_rate,0.00001)
-
-
-
-
-
-
 
 # class phi_network(nn.Module):
 #     def __init__(self,input_size, hidden_size,feature_size):

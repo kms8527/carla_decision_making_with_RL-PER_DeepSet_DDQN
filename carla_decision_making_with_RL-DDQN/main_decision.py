@@ -82,7 +82,7 @@ class CarlaEnv():
         self.hud = HUD(self.width, self.height)
         self.spawn_waypoints = self.map.generate_waypoints(3.0)
         self.lane_change_time = time.time()
-        self.max_Lane_num = 50
+        self.max_Lane_num = 4
         self.ego_Lane = 2
         self.pre_ego_lane = self.ego_Lane
         self.agent = None
@@ -640,9 +640,7 @@ class CarlaEnv():
 
         while search_raidus <= distance:
             # pre_distance = distance
-            distance = ((from_waypoint.next(i)[0].transform.location.x - to_waypoint.transform.location.x) ** 2 +
-                        (from_waypoint.next(i)[0].transform.location.y - to_waypoint.transform.location.y) ** 2 +
-                        (from_waypoint.next(i)[0].transform.location.z - to_waypoint.transform.location.z) ** 2)**0.5
+            distance = self.uclidian_distance(from_waypoint.next(i)[0].transform.location, to_waypoint.transform.location)
 
             if round(distance - search_raidus) > 0:
                 i += round(distance - search_raidus)
@@ -706,9 +704,9 @@ class CarlaEnv():
                 sign = 1
             else:
                 sign = -1
-            dr = sign * ((extra_pos.x - self.player.get_transform().location.x) ** 2 +
-                         (extra_pos.y - self.player.get_transform().location.y) ** 2 +
-                         (extra_pos.z - self.player.get_transform().location.z) ** 2)**0.5 - abs(self.spawn_waypoint.lane_width*(self.extra_dl_list[x]))
+            cur_agent_pos = self.player.get_transform().location
+
+            dr = sign * self.uclidian_distance(cur_agent_pos, extra_pos) - abs(self.spawn_waypoint.lane_width * (self.extra_dl_list[x]))
             player_vel = (self.player.get_velocity().x** 2 + self.player.get_velocity().y** 2 + self.player.get_velocity().z** 2) ** 0.5
             dv =player_vel - (extra_vel.x ** 2 + extra_vel.y ** 2 + extra_vel.z ** 2) ** 0.5
 
@@ -1080,9 +1078,7 @@ class CarlaEnv():
 
         lane_distance_between_points = []
         for i in range(len(self.lane_finished_point)):
-            lane_distance_between_points.append(((self.lane_start_point[i].x - self.lane_finished_point[i].x) ** 2 + (
-                        self.lane_start_point[i].y - self.lane_finished_point[i].y) ** 2 + (
-                                                            self.lane_start_point[i].z - self.lane_finished_point[i].z) ** 2)**0.5)
+            lane_distance_between_points.append(self.uclidian_distance(self.lane_start_point[i],self.lane_finished_point[i]))
 
         # virtual_point = carla.Location(x=-425.112549, y=405.182892, z=0.000000)
         # world.debug.draw_string(virtual_point, 'o', draw_shadow=True, color=carla.Color(r=0, g=0, b=255),
@@ -1178,7 +1174,7 @@ class CarlaEnv():
 
     def main(self):
 
-        PATH = "/home/a/per_deepset-Q_ddqn"
+        PATH = "/home/a/per_deepset-Q_ddqn/"
         print(torch.cuda.get_device_name())
         clock = pygame.time.Clock()
         Keyboardcontrol = KeyboardControl(self, False)
@@ -1210,13 +1206,12 @@ class CarlaEnv():
 
         lane_distance_between_points = []
         for i in range(len(self.lane_finished_point)):
-            lane_distance_between_points.append((self.lane_start_point[i].x - self.lane_finished_point[i].x) ** 2 + (
-                    self.lane_start_point[i].y - self.lane_finished_point[i].y) ** 2 + (
-                                                        self.lane_start_point[i].z - self.lane_finished_point[i].z) ** 2)
+            lane_distance_between_points.append(self.uclidian_distance(self.lane_start_point[i],self.lane_finished_point[i]))
+
 
         epoch_init = 0
 
-        load_dir = PATH+'trained_info2510.pt'
+        load_dir = PATH+'trained_info.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
@@ -1299,7 +1294,7 @@ class CarlaEnv():
                     # Loss 계산                  ㅡ
                     # 가중치 업데이트              ㅡ
 
-                    if epoch % 5 == 0:
+                    if epoch % 100 == 0:
                         # [w, b] = self.agent.model.parameters()  # unpack parameters
                         self.save_dir = torch.save({
                             'epoch': epoch,
@@ -1308,7 +1303,7 @@ class CarlaEnv():
                             'target_model_dict': self.agent.target_model.state_dict(),
                             'optimizer_state_dict': self.agent.optimizer.state_dict(),
                             # 'memorybuffer': self.agent.buffer.buffer,
-                            'epsilon': self.agent.epsilon}, PATH+"trained_info"+str(epoch)+".pt")#+str(epoch)+
+                            'epsilon': self.agent.epsilon}, PATH+"trained_info"+".pt")#+str(epoch)+
                     # print(clock.get_fps())
 
                     # if time.time() - self.simul_time > 7 and time.time() - self.simul_time < 8 and clock.get_fps() < 15:
@@ -1418,7 +1413,7 @@ class CarlaEnv():
                             self.agent.ddqn_learning()
                             for i in range(int(n)):
                                 # self.offline_learning_epoch +=1
-                                self.acummulated_loss += sel.agent.loss
+                                self.acummulated_loss += self.agent.loss
                             if epoch != epoch_init:
                                 writer.add_scalar('Loss', self.acummulated_loss / n, epoch)
                         if epoch != epoch_init:
