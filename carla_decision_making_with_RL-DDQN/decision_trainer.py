@@ -110,11 +110,11 @@ class decision_driving_Agent:
         self.gamma = 0.9999
         self.buffer = ReplayBuffer(self.batch_size)
 
-        self.model  = DQN(self.inputs_shape,20,3,80,self.num_actions,self.batch_size,self.extra_num).cuda()
-        self.target_model = DQN(self.inputs_shape,20,3,80,self.num_actions,self.batch_size,self.extra_num).cuda()
+        self.model  = DeepSet_D3QN(self.inputs_shape,20,3,80,self.num_actions,self.batch_size,self.extra_num).cuda()
+        self.target_model = DeepSet_D3QN(self.inputs_shape,20,3,80,self.num_actions,self.batch_size,self.extra_num).cuda()
         self.epsilon = 1
 
-        self.epsilon_min = 0.0001
+        self.epsilon_min = 0.005
         self.decaying = 0.999
         self.learning_rate =0.001
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
@@ -229,7 +229,7 @@ class decision_driving_Agent:
         if self.epsilon > self.epsilon_min:
             self.epsilon = self.epsilon * self.decaying
         else:
-            self.epsilon = self.epsilon_min
+            self.epsilon = max(self.epsilon,self.epsilon_min)
 
         # x_static = state[-1]
         # state = state[:-1]
@@ -244,7 +244,7 @@ class decision_driving_Agent:
                 self.q_value = self.model(state,x_static)
                 action =  int(self.q_value.argmax().item())-1
 
-            # print("Q: ",self.q_value, "q_ACTION:",action)
+            print("Q: ",self.q_value, "q_ACTION:",action)
 
             # print(self.q_value)
 
@@ -253,7 +253,7 @@ class decision_driving_Agent:
         else:
             self.selection_method = 'random'
             action = random.randrange(self.num_actions)-1
-            # print("random action :", action)
+            print("random action :", action)
         return action
 
     def learning(self):  # sample에서 뽑고 backpropagation 하는 과정
@@ -467,7 +467,7 @@ class DQN(nn.Module):
         # out = self.softmax(out)
         return out
 
-class D3QN(nn.Module):
+class DeepSet_D3QN(nn.Module):
     def __init__(self, input_size, feature_size, x_static_size, hidden_size, output_size, batch_size, extra_num):
         super(DQN, self).__init__()
         self.extra_num = extra_num
@@ -510,9 +510,9 @@ class D3QN(nn.Module):
         out = self.relu(out)
         out = self.l2(out)
         out = self.relu(out)
-        adv = self.l3(out)
+        adv = self.fc3_adv(out)
         val = self.fc3_v(out).expand(-1,adv.size(1))
-        out = val + adv + adv.mean(1,keepdim=True).expand(-1,adv.size(1))
+        out = val + adv - adv.mean(1,keepdim=True).expand(-1,adv.size(1))
         # out = self.softmax(out)
         return out
 

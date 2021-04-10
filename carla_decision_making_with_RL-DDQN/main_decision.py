@@ -25,7 +25,7 @@ from decision_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
-writer = SummaryWriter()
+writer = SummaryWriter('runs/Apr10_02-43-47_a')
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -577,7 +577,7 @@ class CarlaEnv():
         if len(self.collision_sensor.history) != 0:
             done = True
             print("collision")
-            reward = -3
+            reward = -10
         elif time.time()-self.simul_time > 25:
             print("simultime done")
             done = True
@@ -585,16 +585,16 @@ class CarlaEnv():
         elif decision == 1 and self.ego_Lane >= self.max_Lane_num:  # dont leave max lane
             done = True
             print("lane right collision")
-            reward = -3
+            reward = -10
         elif decision == -1 and self.ego_Lane <= 1:  # dont leave min lane
             done = True
             print("lane left collision")
-            reward = -3
+            reward = -10
         elif next_x_static[2] < 0 and self.ego_Lane > self.max_Lane_num :
             done = True
             # print("ego_Lane",self.ego_Lane,"mam lane",self.max_Lane_num)
             print("Agent get into exit, Done")
-            reward = -3
+            reward = -10
         else:
             reward = 0.09-1/2*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel)-plc
             # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
@@ -1225,7 +1225,7 @@ class CarlaEnv():
 
         epoch_init = 0
 
-        load_dir = PATH+'trained_info.pt'
+        load_dir = PATH+'trained_info200.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
@@ -1311,7 +1311,7 @@ class CarlaEnv():
                     # Loss 계산                  ㅡ
                     # 가중치 업데이트              ㅡ
 
-                    if epoch % 5 == 0:
+                    if epoch % 100 == 0:
                         # [w, b] = self.agent.model.parameters()  # unpack parameters
                         self.save_dir = torch.save({
                             'epoch': epoch,
@@ -1320,7 +1320,7 @@ class CarlaEnv():
                             'target_model_dict': self.agent.target_model.state_dict(),
                             'optimizer_state_dict': self.agent.optimizer.state_dict(),
                             # 'memorybuffer': self.agent.buffer.buffer,
-                            'epsilon': self.agent.epsilon}, PATH+"trained_info"+".pt")#+str(epoch)+
+                            'epsilon': self.agent.epsilon}, PATH+"trained_info"+str(epoch)+".pt")#+str(epoch)+
                     # print(clock.get_fps())
 
                     # if time.time() - self.simul_time > 7 and time.time() - self.simul_time < 8 and clock.get_fps() < 15:
@@ -1340,15 +1340,6 @@ class CarlaEnv():
                         self.decision = 0
                     else:
                         self.decision = self.agent.act(state, x_static)
-
-                        if time.time()-self.simul_time>self.check+1:
-                            if self.check ==3:
-                                self.check = 9999
-                            self.check +=10
-
-                            self.decision = 1
-                        else:
-                            self.decision = 0
 
                     before_safety_decision = self.decision
                     if self.safety_mode == True:
@@ -1415,7 +1406,7 @@ class CarlaEnv():
                                 # elif x_static[0]>3.5:
                                 #     print("lane 4 :", before_safety_decision)
 
-                                sample = [state, x_static, before_safety_decision, -3, None, None, done]
+                                sample = [state, x_static, before_safety_decision, -10, None, None, done]
 
                                 self.agent.buffer.append(sample)
                                 self.agent.memorize_td_error(0)
@@ -1479,7 +1470,7 @@ class CarlaEnv():
                                 #     print("lane 1 :", before_safety_decision)
                                 # elif x_static[0]>3.5:
                                 #     print("lane 4 :", before_safety_decision)
-                                sample = [state, x_static, before_safety_decision, -3, None, None, done]
+                                sample = [state, x_static, before_safety_decision, -10, None, None, done]
                                 self.agent.buffer.append(sample)
                                 self.agent.memorize_td_error(0)
 
