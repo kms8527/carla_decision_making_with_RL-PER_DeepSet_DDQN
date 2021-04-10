@@ -25,7 +25,7 @@ from decision_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
-writer = SummaryWriter()
+writer = SummaryWriter('runs/Apr10_16-36-42_a')
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -1225,7 +1225,7 @@ class CarlaEnv():
 
         epoch_init = 0
 
-        load_dir = PATH+'trained_info1400.pt'
+        load_dir = PATH+'trained_info2400.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
