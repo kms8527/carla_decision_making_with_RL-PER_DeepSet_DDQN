@@ -1225,7 +1225,7 @@ class CarlaEnv():
 
         epoch_init = 0
 
-        load_dir = PATH+'trained_info200.pt'
+        load_dir = PATH+'trained_info1400.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
