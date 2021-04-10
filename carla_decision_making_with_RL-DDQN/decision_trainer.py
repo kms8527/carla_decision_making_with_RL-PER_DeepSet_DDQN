@@ -469,7 +469,7 @@ class DQN(nn.Module):
 
 class DeepSet_D3QN(nn.Module):
     def __init__(self, input_size, feature_size, x_static_size, hidden_size, output_size, batch_size, extra_num):
-        super(DQN, self).__init__()
+        super(DeepSet_D3QN, self).__init__()
         self.extra_num = extra_num
         self.input_size = input_size
         self.static_size = x_static_size

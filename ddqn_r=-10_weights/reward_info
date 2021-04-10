@@ -1,0 +1,28 @@
+if len(self.collision_sensor.history) != 0:
+            done = True
+            print("collision")
+            reward = -10
+        elif time.time()-self.simul_time > 25:
+            print("simultime done")
+            done = True
+            reward = 0
+        elif decision == 1 and self.ego_Lane >= self.max_Lane_num:  # dont leave max lane
+            done = True
+            print("lane right collision")
+            reward = -10
+        elif decision == -1 and self.ego_Lane <= 1:  # dont leave min lane
+            done = True
+            print("lane left collision")
+            reward = -10
+        elif next_x_static[2] < 0 and self.ego_Lane > self.max_Lane_num :
+            done = True
+            # print("ego_Lane",self.ego_Lane,"mam lane",self.max_Lane_num)
+            print("Agent get into exit, Done")
+            reward = -10
+        else:
+            reward = 0.09-1/2*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel)-plc
+            # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))        
+
+
+
+safety_mode = False
