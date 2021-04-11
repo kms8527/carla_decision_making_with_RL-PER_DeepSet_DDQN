@@ -25,7 +25,7 @@ from decision_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
-writer = SummaryWriter('runs/Apr10_16-36-42_a')
+writer = SummaryWriter()
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -81,7 +81,7 @@ class CarlaEnv():
         self.map = world.get_map()
         self.spectator = self.world.get_spectator()
         self.hud = HUD(self.width, self.height)
-        self.spawn_waypoints = self.map.generate_waypoints(3.0)
+        # self.spawn_waypoints = self.map.generate_waypoints(3.0)
         self.lane_change_time = time.time()
         self.max_Lane_num = 4
         self.ego_Lane = 2
@@ -153,42 +153,12 @@ class CarlaEnv():
         self.index = 0
         # print('start destroying actors.')
 
-        if len(self.actor_list) != 0:
-            # print('destroying actors.')
-            # print("actor 제거 :", self.actor_list)
-            if self.collision_sensor.sensor.is_listening:
-                self.collision_sensor.sensor.stop()
-            for actor in self.actor_list:
-                    actor.destroy()
-            # print("finshed actor destroy")
+        self.clear_all_actors()
 
-            # for x in self.actor_list:
-            #     try:
-            #         client.apply_batch([carla.command.DestroyActors(x.id)])
-            #     except:
-            #         continue
-        if len(self.extra_list) != 0:
-            # client.apply_batch([carla.command.DestoryActors(x.id) for x in self.extra_list])
-            # print("extra 제거 :", self.extra_list)
-            for x in self.extra_list:
-                try:
-                    client.apply_batch([carla.command.DestroyActor(x.id)])
-                except:
-                    continue
-            # for extra in self.extra_list:
-            #     # print("finally 에서 actor 제거 :", self.extra_list)
-            #     print(extra.is_alive)
-            #     if extra.is_alive:
-            #         extra.destroy()
-            # print("finshed extra destroy")
-
-            # for x in self.extra_list:
-            #     try:
-            #         client.apply_batch([carla.command.DestroyActor(x.id)])
-            #     except:
-            #         continue
-        # print('finished destroying actors.')
-
+        global actors
+        global sensors
+        actors = []
+        sensors = []
         self.actor_list = []
         self.extra_list = []
         self.ROI_extra_list = []
@@ -229,7 +199,7 @@ class CarlaEnv():
         # print(self.player.bounding_box) # ego vehicle length
 
         self.actor_list.append(self.player)
-
+        actors.append(self.player)
         # self.camera_rgb =RGBSensor(self.player, self.hud)
         # self.actor_list.append(self.camera_rgb.sensor)
 
@@ -241,6 +211,7 @@ class CarlaEnv():
 
         self.collision_sensor = CollisionSensor(self.player, self.hud)  # 충돌 여부 판단하는 센서
         self.actor_list.append(self.collision_sensor.sensor)
+        sensors.append(self.collision_sensor.sensor)
 
         # self.lane_invasion_sensor = LaneInvasionSensor(self.player, self.hud)  # lane 침입 여부 확인하는 센서
         # self.actor_list.append(self.lane_invasion_sensor.sensor)
@@ -288,6 +259,7 @@ class CarlaEnv():
                         blueprint.set_attribute('color', color)
                 extra = self.world.spawn_actor(blueprint,spawn_point)
                 self.extra_list.append(extra)
+                actors.append(extra)
 
             spawn_point = carla.Transform(carla.Location(x=14.797643, y=-163.310318, z=2.000000),
                                           carla.Rotation(pitch=0.000000, yaw=-450.224854, roll=0.000000))
@@ -441,7 +413,7 @@ class CarlaEnv():
                             carla.Rotation(pitch=-90)))
 
         # extra_target_velocity = 10
-        port = 8000
+
         # traffic_manager = client.get_trafficmanager(port)
         # traffic_manager.set_global_distance_to_leading_vehicle(100.0)
         # traffic_manager.set_synchronous_mode(True) # for std::out_of_range eeror
@@ -515,6 +487,43 @@ class CarlaEnv():
     #     self.controller = Pure_puresuit_controller(self.player, self.spawn_waypoint, self.extra_list, 70)  # km/h
 
 
+    def clear_all_actors(self):
+        if len(self.actor_list) != 0:
+            # print('destroying actors.')
+            # print("actor 제거 :", self.actor_list)
+
+            if self.collision_sensor.sensor.is_listening:
+                self.collision_sensor.sensor.stop()
+            for actor in self.actor_list:
+                    actor.destroy()
+            # print("finshed actor destroy")
+
+            # for x in self.actor_list:
+            #     try:
+            #         client.apply_batch([carla.command.DestroyActors(x.id)])
+            #     except:
+            #         continue
+        if len(self.extra_list) != 0:
+            # client.apply_batch([carla.command.DestoryActors(x.id) for x in self.extra_list])
+            # print("extra 제거 :", self.extra_list)
+            for x in self.extra_list:
+                try:
+                    client.apply_batch([carla.command.DestroyActor(x.id)])
+                except:
+                    continue
+            # for extra in self.extra_list:
+            #     # print("finally 에서 actor 제거 :", self.extra_list)
+            #     print(extra.is_alive)
+            #     if extra.is_alive:
+            #         extra.destroy()
+            # print("finshed extra destroy")
+
+            # for x in self.extra_list:
+            #     try:
+            #         client.apply_batch([carla.command.DestroyActor(x.id)])
+            #     except:
+            #         continue
+        # print('finished destroying actors.')
     def is_extra_front_than_ego(self,extra_pos):
 
         extra_pos_tensor = torch.tensor([[extra_pos.x, extra_pos.y, extra_pos.z, 1.0]])
@@ -1519,12 +1528,14 @@ class CarlaEnv():
         #     # pygame.quit()
         #     print('done.')
 
+world = None
+actors=[]
+sensors = []
 if __name__ == '__main__':
     try:
         client = carla.Client('localhost', 2000)
         client.set_timeout(10.0)
         world =client.load_world('Town04_Opt')
-
         client.set_timeout(10.0)
 
         weather = carla.WeatherParameters(
@@ -1532,17 +1543,25 @@ if __name__ == '__main__':
             precipitation=0.0,
             sun_altitude_angle=5.0)
 
-
         world.unload_map_layer(carla.MapLayer.All)
-
         world.set_weather(weather)
-
-        CarlaEnv(world)
-
-
+        env=CarlaEnv(world)
     except:
-        pass
 
+        if len(sensors) != 0:
+            # print('destroying actors.')
+            # print("actor 제거 :", self.actor_list)
+            for sensor in sensors:
+                if sensor.is_listening:
+                    sensor.stop()
+                sensor.destroy()
+
+        if len(actors) != 0:
+            for x in actors:
+                try:
+                    client.apply_batch([carla.command.DestroyActor(x.id)])
+                except:
+                    print("destroy error ")
 
 
 
