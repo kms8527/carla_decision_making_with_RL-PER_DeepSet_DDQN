@@ -49,10 +49,15 @@ class Pure_puresuit_controller:
         #         2].position.y)**2)**0.5 / 100.0  # unit : meters
         # self.player_length = 2.9348175211493803
         self.world = self.player.get_world()
-        if waypoint ==None:
+        self.map = self.world.get_map()
+        if waypoint == None:
             self.waypoint = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving)
         else:
             self.waypoint = waypoint
+        self.my_location_waypoint = waypoint
+        self.world.debug.draw_string(self.my_location_waypoint.transform.location, 'o', draw_shadow=True,
+                                     color=carla.Color(r=255, g=255, b=255), life_time=9999)
+        self.pre_my_location_waypoint = self.my_location_waypoint
         self.desired_vel = desired_vel
         self.velocity = 0 #km/h
 
@@ -93,9 +98,11 @@ class Pure_puresuit_controller:
         self.h_constant = 1.8
         self.is_start_to_lane_change = False
         self.is_lane_changing = False
+        self.decision = None
+        self.pre_decision = None
 
-
-    def apply_control(self,decision=None):
+    def apply_control(self,decision):
+        self.decision = decision
         dt = time.time() - self.t
         self.safe_distance = int(self.h_constant*self.velocity+20)
 
@@ -122,8 +129,8 @@ class Pure_puresuit_controller:
         self.is_start_to_lane_change = False
 
 
-        if decision == 1:
-            # print("right 차선 변경 수행")
+        if self.decision == 1:
+            print("right 차선 변경 수행")
             self.leading_vehicle = None
             self.is_start_to_lane_change = True
 
@@ -138,8 +145,8 @@ class Pure_puresuit_controller:
             # self.world.debug.draw_string(self.waypoint.transform.location, 'o', draw_shadow=True,
             #                              color=carla.Color(r=0, g=255, b=0), life_time=1)
 
-        elif decision == -1:
-            # print("left 차선 변경 수행")
+        elif self.decision == -1:
+            print("left 차선 변경 수행")
             self.leading_vehicle = None
             self.is_start_to_lane_change = True
 
@@ -189,36 +196,11 @@ class Pure_puresuit_controller:
                                          color=carla.Color(r=255, g=255, b=255), life_time=1)
         loop_break = False
 
-        # self.integral = 0
-        if self.extra_actors is not None:  # ego vehicle 만 수행
-            for actor in self.extra_actors:
-                extra_pos = actor.get_transform().location
-                try:
-                    for x in range(1, self.safe_distance + 1 - int(self.waypoint.lane_width), 1):
-                        # self.world.debug.draw_string(self.waypoint.next(x)[0].transform.location, 'o', draw_shadow=True,
-                        #                         color=carla.Color(r=255, g=255, b=255), life_time=1)
 
-                        next_waypoints = self.waypoint.next(x)
-                        if len(next_waypoints) == 0:
-                            return False
-                        else:
-                            self.search_radius = ((extra_pos.x - next_waypoints[0].transform.location.x) ** 2 + (
-                                        extra_pos.y - next_waypoints[0].transform.location.y) ** 2) ** 0.5
+        self.search_leading_vehicle()
 
-                        if self.search_radius <= self.waypoint.lane_width / 2:
-                            # print("추종 시작")
-                            self.leading_vehicle = actor
 
-                            self.y_ini = self.a
-                            # self.acc_start_time = time.time()
-                            loop_break = True
-                            break
-                    if loop_break == True:
-                        loop_break = False
-                        break
-                except IndexError:
-                    print("IndexError 발생")
-                    pass
+
         if self.leading_vehicle is not None   : #전방 차량이 없거나 없어졌을 때 다시 전방 차량을 찾아줌. 없으면 None값으로 초기화
 
             self.leading_distance = ((self.leading_vehicle.get_transform().location.x - self.player.get_transform().location.x) ** 2 + (
@@ -272,7 +254,48 @@ class Pure_puresuit_controller:
 
         # print(self.waypoint.section_id)
         # print(self.waypoint.lane_width)
+        self.pre_my_location_waypoint = self.my_location_waypoint
         self.t = time.time()
+
+    def search_leading_vehicle(self):
+        loop_break = False
+        self.my_location_waypoint = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving)
+        if abs(self.waypoint.lane_id) > abs(self.my_location_waypoint.lane_id):
+            self.my_location_waypoint = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving).get_right_lane()
+        elif abs(self.waypoint.lane_id) < abs(self.my_location_waypoint.lane_id):
+            self.my_location_waypoint = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving).get_left_lane()
+
+        # self.world.debug.draw_string(self.my_location_waypoint.transform.location, 'o', draw_shadow=True,
+        #                         color=carla.Color(r=0, g=255, b=255), life_time=999)
+
+        # tmp = self.waypoint.previous(10)[0].transform.location
+
+        for actor in self.extra_actors:
+            extra_pos = actor.get_transform().location
+            try:
+                for x in range(1, self.safe_distance + 1 - int(self.waypoint.lane_width), 1):
+
+                    # if x== self.safe_distance - int(self.waypoint.lane_width):
+                    #     print("h")
+                    next_waypoints = self.my_location_waypoint.next(x)
+                    if len(next_waypoints) == 0:
+                        return False
+                    else:
+                        self.search_radius = ((extra_pos.x - next_waypoints[0].transform.location.x) ** 2 + (
+                                extra_pos.y - next_waypoints[0].transform.location.y) ** 2) ** 0.5
+
+                    if self.search_radius <= self.waypoint.lane_width / 2:
+                        # print("추종 시작")
+                        self.leading_vehicle = actor
+                        # self.acc_start_time = time.time()
+                        loop_break = True
+                        break
+                if loop_break == True:
+                    loop_break = False
+                    break
+            except IndexError:
+                print("IndexError 발생")
+                pass
 
     def control_input(self):
 

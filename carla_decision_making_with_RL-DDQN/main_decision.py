@@ -25,7 +25,7 @@ from decision_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
-writer = SummaryWriter('runs/Apr10_16-36-42_a')
+writer = SummaryWriter('runs/Apr11_13-23-27_a')
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -53,7 +53,7 @@ class CarlaEnv():
     font = pygame.font.init()
 
     def __init__(self,world):
-        self.safety_mode = False
+        self.safety_mode = True
         #화면 크기
         self.start_epoch = True
         self.input_size = 4  # dr dv da dl
@@ -1234,7 +1234,7 @@ class CarlaEnv():
 
         epoch_init = 0
 
-        load_dir = PATH+'trained_info7600.pt'
+        load_dir = PATH+'trained_info1200.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
