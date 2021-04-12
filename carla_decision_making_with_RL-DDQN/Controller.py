@@ -95,7 +95,7 @@ class Pure_puresuit_controller:
         self.a = 0
         self.y_ini = 0
         self.steer = 0
-        self.h_constant = 1.8
+        self.h_constant = 0.9
         self.is_start_to_lane_change = False
         self.is_lane_changing = False
         self.decision = None
@@ -195,11 +195,7 @@ class Pure_puresuit_controller:
             self.world.debug.draw_string(self.leading_vehicle.get_transform().location, 'o', draw_shadow=True,
                                          color=carla.Color(r=255, g=255, b=255), life_time=1)
         loop_break = False
-
-
         self.search_leading_vehicle()
-
-
 
         if self.leading_vehicle is not None   : #전방 차량이 없거나 없어졌을 때 다시 전방 차량을 찾아줌. 없으면 None값으로 초기화
 
@@ -324,13 +320,14 @@ class Pure_puresuit_controller:
 
         # print(epsilon)
 
-        spacing_error = epsilon + self.h_constant*self.velocity+10
+        spacing_error = epsilon + self.h_constant*self.velocity+3
         # print(spacing_error)
         x_des_ddot = -1/self.h_constant * (epsilon + lamda * spacing_error)
         # print(x_des_ddot)
-        accel_x = self.player.get_acceleration().x
-        accel_y = self.player.get_acceleration().y
-        accel_z = self.player.get_acceleration().z
+        accel = self.player.get_acceleration()
+        accel_x = accel.x
+        accel_y = accel.y
+        accel_z = accel.z
         Max = max(abs(accel_x),abs(accel_y))
         sign = 0
         if accel_x ==Max or accel_y ==Max:
