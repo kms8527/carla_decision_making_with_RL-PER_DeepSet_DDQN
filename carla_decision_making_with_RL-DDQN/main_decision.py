@@ -25,7 +25,7 @@ from decision_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
-writer = SummaryWriter('runs/Apr11_13-23-27_a')
+writer = SummaryWriter()
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -53,7 +53,7 @@ class CarlaEnv():
     font = pygame.font.init()
 
     def __init__(self,world):
-        self.safety_mode = True
+        self.safety_mode = False
         #화면 크기
         self.start_epoch = True
         self.input_size = 4  # dr dv da dl
@@ -129,7 +129,7 @@ class CarlaEnv():
         self.distance_memory = None
         self.pre_max_Lane_num = self.max_Lane_num
         self.restart()
-        self.main()
+        self.main_test()
 
     def restart(self):
         self.check = 0
@@ -187,11 +187,6 @@ class CarlaEnv():
         # print(self.spawn_waypoint.transform)
 
         # self.controller = MPCController.Controller
-
-
-
-
-
 
         self.player = world.spawn_actor(
             random.choice(blueprint_library.filter('vehicle.bmw.grandtourer')),
@@ -281,10 +276,6 @@ class CarlaEnv():
                     extra.set_autopilot(True,tm_port)
 
                     self.world.constant_velocity_enabled = True
-
-
-
-
 
         elif self.scenario == "scenario1":
             self.extra_num = 3
@@ -408,9 +399,10 @@ class CarlaEnv():
                     # traffic_manager.auto_lane_change(extra,False)
         # print('Extra Genration Finished')
 
-
-        self.spectator.set_transform(carla.Transform(self.player.get_transform().location + carla.Location(z=100),
-                            carla.Rotation(pitch=-90)))
+        tmp = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving)
+        tmp_rotation = tmp.transform.rotation
+        self.spectator.set_transform(carla.Transform(self.player.get_transform().location + carla.Location(z=150),
+                            carla.Rotation(yaw=tmp_rotation.yaw,  pitch=-90)))
 
         # extra_target_velocity = 10
 
@@ -1145,7 +1137,7 @@ class CarlaEnv():
             self.get_max_lane(lane_distance_between_points)
             d = self.search_distance_valid()
 
-            print("d:", d, "section:", self.section, "index", self.index, "max_lane", self.max_Lane_num)
+            # print("d:", d, "section:", self.section, "index", self.index, "max_lane", self.max_Lane_num)
 
             ## finished get max lane ##
             # print("finished get lane")
@@ -1234,7 +1226,7 @@ class CarlaEnv():
 
         epoch_init = 0
 
-        load_dir = PATH+'trained_info1200.pt'
+        load_dir = PATH+'trained_info.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
@@ -1320,7 +1312,7 @@ class CarlaEnv():
                     # Loss 계산                  ㅡ
                     # 가중치 업데이트              ㅡ
 
-                    if epoch % 100 == 0:
+                    if epoch % 1 == 0:
                         # [w, b] = self.agent.model.parameters()  # unpack parameters
                         self.save_dir = torch.save({
                             'epoch': epoch,
@@ -1329,7 +1321,7 @@ class CarlaEnv():
                             'target_model_dict': self.agent.target_model.state_dict(),
                             'optimizer_state_dict': self.agent.optimizer.state_dict(),
                             # 'memorybuffer': self.agent.buffer.buffer,
-                            'epsilon': self.agent.epsilon}, PATH+"trained_info"+str(epoch)+".pt")#+str(epoch)+
+                            'epsilon': self.agent.epsilon}, PATH+"trained_info"+".pt")#+str(epoch)+
                     # print(clock.get_fps())
 
                     # if time.time() - self.simul_time > 7 and time.time() - self.simul_time < 8 and clock.get_fps() < 15:
