@@ -1,0 +1,3 @@
+reward = -10
+
+reward = 0.09-1/2*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel)-plc

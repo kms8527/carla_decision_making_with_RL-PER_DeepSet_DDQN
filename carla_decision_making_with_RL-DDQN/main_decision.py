@@ -25,7 +25,7 @@ from decision_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
-writer = SummaryWriter()
+writer = SummaryWriter('runs/Apr13_13-51-36_a')
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -129,7 +129,7 @@ class CarlaEnv():
         self.distance_memory = None
         self.pre_max_Lane_num = self.max_Lane_num
         self.restart()
-        self.main_test()
+        self.main()
 
     def restart(self):
         self.check = 0
@@ -548,7 +548,7 @@ class CarlaEnv():
 
     def step(self, decision):
 
-        plc = 0.005
+        plc = 0.009
         # decision = None
         '''
         # Simple Action (action number: 3)
@@ -597,7 +597,8 @@ class CarlaEnv():
             print("Agent get into exit, Done")
             reward = -10
         else:
-            reward = 0.09-1/2*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel)-plc
+            reward = 0.9 - 0.9 * abs(self.controller.desired_vel - self.controller.velocity) / (self.controller.desired_vel) - plc
+
             # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
 
         # print("ego:", self.ego_Lane, "max_lane", self.max_Lane_num,"decision:", decision)
@@ -623,7 +624,6 @@ class CarlaEnv():
         """
 
         distance=9999
-        sign = 0
         search_raidus = 5
         i = 0.01
 
