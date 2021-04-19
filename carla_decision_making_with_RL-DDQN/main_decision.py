@@ -11,7 +11,8 @@ import sys
 #         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
 # except IndexError:
 #     pass
-import cv2
+# import cv2
+
 import carla
 import math
 from sensor_class import *
@@ -25,7 +26,7 @@ from decision_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
-writer = SummaryWriter('runs/Apr13_13-51-36_a')
+writer = SummaryWriter()
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -53,7 +54,7 @@ class CarlaEnv():
     font = pygame.font.init()
 
     def __init__(self,world):
-        self.safety_mode = False
+        self.safety_mode = True
         #화면 크기
         self.start_epoch = True
         self.input_size = 4  # dr dv da dl
@@ -127,6 +128,7 @@ class CarlaEnv():
         self.episode_start = None
         self.index = 0
         self.distance_memory = None
+        self.vehicles_distance_memory = torch.zeros(self.extra_num)
         self.pre_max_Lane_num = self.max_Lane_num
         self.restart()
         self.main()
@@ -138,6 +140,7 @@ class CarlaEnv():
         self.decision_changed = False
         self.simul_time = time.time()
         self.distance_memory = None
+        self.vehicles_distance_memory = torch.zeros(self.extra_num)
         self.lane_change_time = time.time()-100.0
         self.can_lane_change = True
         self.max_Lane_num = 4
@@ -214,6 +217,10 @@ class CarlaEnv():
         # self.gnss_sensor = GnssSensor(self.player)
         # self.actor_list.append(self.gnss_sensor.sensor)
 
+        self.spectator.set_transform(
+            carla.Transform(self.player.get_transform().location + carla.Location(z=100),
+                            carla.Rotation(pitch=-90)))
+
         # --------------
         # Spawn Surrounding vehicles
         # --------------
@@ -224,6 +231,8 @@ class CarlaEnv():
         blueprints = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
         # print(*blueprints)
         spawn_point = None
+
+
 
         if self.scenario == "random":
             distance_step = 20
@@ -399,10 +408,9 @@ class CarlaEnv():
                     # traffic_manager.auto_lane_change(extra,False)
         # print('Extra Genration Finished')
 
-        tmp = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving)
-        tmp_rotation = tmp.transform.rotation
-        self.spectator.set_transform(carla.Transform(self.player.get_transform().location + carla.Location(z=150),
-                            carla.Rotation(yaw=tmp_rotation.yaw,  pitch=-90)))
+        # tmp = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving)
+        # tmp_rotation = tmp.transform.rotation
+
 
         # extra_target_velocity = 10
 
@@ -516,19 +524,25 @@ class CarlaEnv():
             #     except:
             #         continue
         # print('finished destroying actors.')
-    def is_extra_front_than_ego(self,extra_pos):
+    def is_extra_front_than_this_point(self,extra_pos,point):
+        """
 
+        :param extra_pos:  carla.location type
+        :param point: carla.Transform type
+        :return: bool type
+        """
         extra_pos_tensor = torch.tensor([[extra_pos.x, extra_pos.y, extra_pos.z, 1.0]])
 
-        theta_z =  math.radians(self.player.get_transform().rotation.yaw)
-        trans = self.player.get_transform().location
+        theta_z =  math.radians(point.rotation.yaw)
+        trans = point.location
 
         n = torch.tensor([[math.cos(theta_z), math.sin(theta_z), 0]])
         o = torch.tensor([[-math.sin(theta_z),  math.cos(theta_z), 0]])
         a = torch.tensor([[0.0, 0.0, 1.0]])
         p = torch.tensor([[trans.x, trans.y, trans.z]])
 
-        m41 = -torch.dot(torch.squeeze(n),torch.squeeze(p)).unsqueeze(0).unsqueeze(1)
+        #get inverse matrix of homogenous matrix
+        m41 = -torch.dot(torch.squeeze(n),torch.squeeze(p)).unsqueeze(0).unsqueeze(1) # row4 col1 componets
         m42 = -torch.dot(torch.squeeze(o),torch.squeeze(p)).unsqueeze(0).unsqueeze(1)
         m43 = -torch.dot(torch.squeeze(a), torch.squeeze(p)).unsqueeze(0).unsqueeze(1)
         m = torch.tensor([[0.0, 0.0, 0.0, 1.0]])
@@ -597,8 +611,7 @@ class CarlaEnv():
             print("Agent get into exit, Done")
             reward = -10
         else:
-            reward = 0.9 - 0.9 * abs(self.controller.desired_vel - self.controller.velocity) / (self.controller.desired_vel) - plc
-
+            reward = 0.9-0.9*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel)-plc
             # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
 
         # print("ego:", self.ego_Lane, "max_lane", self.max_Lane_num,"decision:", decision)
@@ -614,70 +627,112 @@ class CarlaEnv():
 
         return None, None, decision ,reward, next_state, next_x_static , done
                                         # Next State 표현 필요
-    def search_distance_between_vehicles(self,extra_forth_lane_waypoint,from_,to_):
-        """
-        :param search_raidus:
-        :param extra: extra actor
-        :param from_: data type = 'extra actor' or ego_forth_lane_waypoint
-        :param to_:
-        :return: distance from_ to to_
-        """
+    # def search_distance_between_vehicles(self,extra_forth_lane_waypoint,from_,to_):
+    #     """
+    #     :param search_raidus:
+    #     :param extra: extra actor
+    #     :param from_: data type = 'extra actor' or ego_forth_lane_waypoint
+    #     :param to_:
+    #     :return: distance from_ to to_
+    #     """
+    #
+    #     distance=9999
+    #     sign = 0
+    #     search_raidus = 5
+    #     i = 0.01
+    #
+    #     # self.world.debug.draw_string(ego_lane_waypoint.transform.location,
+    #     #                                   'o', draw_shadow=True,
+    #     #                                  color=carla.Color(r=0, g=0, b=255), life_time=-1)
+    #
+    #     if from_ == extra_forth_lane_waypoint:
+    #         from_waypoint = extra_forth_lane_waypoint
+    #         to_waypoint =  to_
+    #         sign = -1
+    #     else:
+    #         from_waypoint = to_
+    #         to_waypoint = extra_forth_lane_waypoint
+    #         sign = 1
+    #
+    #     while search_raidus <= distance:
+    #         # pre_distance = distance
+    #         distance = self.uclidian_distance(from_waypoint.next(i)[0].transform.location, to_waypoint.transform.location)
+    #
+    #
+    #         if round(distance - search_raidus) > 0:
+    #             i += round(distance - search_raidus)
+    #             # print("i : " ,i)
+    #             # break
+    #         else:
+    #             # self.world.debug.draw_string(from_waypoint.next(distance + i)[0].transform.location,
+    #             #                              'o', draw_shadow=True, color=carla.Color(r=255, g=255, b=255), life_time=-1)
+    #             # print((distance + i)*sign)
+    #             # print("finish")
+    #             return (distance + i)*sign
 
-        distance=9999
-        search_raidus = 5
-        i = 0.01
+    def get_dr(self,extra,num):
+        ego_forth_lane = self.get_waypoint_of_first_lane(self.player)
+        extra_forth_pos = self.get_waypoint_of_first_lane(extra).transform.location
 
-        # self.world.debug.draw_string(ego_lane_waypoint.transform.location,
-        #                                   'o', draw_shadow=True,
-        #                                  color=carla.Color(r=0, g=0, b=255), life_time=-1)
+        distance1 = 0
+        step = 6
+        waypoint = ego_forth_lane
 
-        if from_ == extra_forth_lane_waypoint:
-            from_waypoint = extra_forth_lane_waypoint
-            to_waypoint =  to_
-            sign = -1
+        self.world.debug.draw_string(self.player.get_location(),
+                                     'o', draw_shadow=True,
+                                     color=carla.Color(r=255, g=0, b=0), life_time=-1)
+        self.world.debug.draw_string(extra.get_location(),
+                                     'o', draw_shadow=True,
+                                     color=carla.Color(r=255, g=255, b=255), life_time=-1)
+
+        if self.vehicles_distance_memory[num] != 0:
+            if self.vehicles_distance_memory[num] > 0:
+                tmp = waypoint.next(self.vehicles_distance_memory[num].item())[0].transform
+
+            elif self.vehicles_distance_memory[num] < 0:
+                tmp = waypoint.previous(abs(self.vehicles_distance_memory[num].item()))[0].transform
+
+
+
+            if self.is_extra_front_than_this_point(extra_forth_pos,tmp):
+                self.vehicles_distance_memory[num] += self.uclidian_distance(tmp.location, extra_forth_pos)
+            else:
+                self.vehicles_distance_memory[num] -= self.uclidian_distance(tmp.location, extra_forth_pos)
+
+            return self.vehicles_distance_memory[num]
+
         else:
-            from_waypoint = to_
-            to_waypoint = extra_forth_lane_waypoint
-            sign = 1
+            while self.uclidian_distance(waypoint.transform.location, extra_forth_pos) >= 2 * step:
+                waypoint = waypoint.next(step)[0]
+                distance1 += step
+            self.vehicles_distance_memory[num] = distance1 + self.uclidian_distance(waypoint.transform.location, extra_forth_pos)
 
-        while search_raidus <= distance:
-            # pre_distance = distance
-            distance = self.uclidian_distance(from_waypoint.next(i)[0].transform.location, to_waypoint.transform.location)
+            return self.vehicles_distance_memory[num]
 
-
-            if round(distance - search_raidus) > 0:
-                i += round(distance - search_raidus)
-                # print("i : " ,i)
-                # break
-            else:
-                # self.world.debug.draw_string(from_waypoint.next(distance + i)[0].transform.location,
-                #                              'o', draw_shadow=True, color=carla.Color(r=255, g=255, b=255), life_time=-1)
-                # print((distance + i)*sign)
-                # print("finish")
-                return (distance + i)*sign
-
-    def get_dr(self):
-
-        dr= np.zeros(len(self.extra_list))
-        ego_forth_lane = self.get_waypoint_of_last_lane(self.player)
-
-        # self.world.debug.draw_string(ego_forth_lane.transform.location,
-        #                              'o', draw_shadow=True,
-        #                              color=carla.Color(r=255, g=0, b=0), life_time=-1)
-        for index, extra in enumerate(self.extra_list):
-
-            extra_pos = extra.get_transform().location
-            extra_forth_lane_waypoint = self.get_waypoint_of_last_lane(extra)
-            self.world.debug.draw_string(extra_forth_lane_waypoint.transform.location,
-                                             'o', draw_shadow=True,
-                                             color=carla.Color(r=255, g=0, b=0), life_time=-1)
-            if self.is_extra_front_than_ego(extra_pos) == False:
-                dr[index] = self.search_distance_between_vehicles(extra_forth_lane_waypoint,extra_forth_lane_waypoint,ego_forth_lane)
-            else:
-                dr[index] = self.search_distance_between_vehicles(extra_forth_lane_waypoint,ego_forth_lane,extra_forth_lane_waypoint)
-        return dr
-
-                # print("lane id : ", forth_lane_waypoint.lane_id)
+    # def get_dr(self):
+    #
+    #     dr= np.zeros(len(self.extra_list))
+    #     ego_forth_lane = self.get_waypoint_of_last_lane(self.player)
+    #
+    #
+    #
+    #     # self.world.debug.draw_string(ego_forth_lane.transform.location,
+    #     #                              'o', draw_shadow=True,
+    #     #                              color=carla.Color(r=255, g=0, b=0), life_time=-1)
+    #     for index, extra in enumerate(self.extra_list):
+    #
+    #         extra_pos = extra.get_transform().location
+    #         extra_forth_lane_waypoint = self.get_waypoint_of_last_lane(extra)
+    #         self.world.debug.draw_string(extra_forth_lane_waypoint.transform.location,
+    #                                          'o', draw_shadow=True,
+    #                                          color=carla.Color(r=255, g=0, b=0), life_time=-1)
+    #         if self.is_extra_front_than_this_point(extra_pos) == False:
+    #             dr[index] = self.search_distance_between_vehicles(extra_forth_lane_waypoint,extra_forth_lane_waypoint,ego_forth_lane)
+    #         else:
+    #             dr[index] = self.search_distance_between_vehicles(extra_forth_lane_waypoint,ego_forth_lane,extra_forth_lane_waypoint)
+    #     return dr
+    #
+    #             # print("lane id : ", forth_lane_waypoint.lane_id)
 
     def get_next_state(self,decision=None):
         """
@@ -699,16 +754,20 @@ class CarlaEnv():
             else:
                 pass
 
-            extra_pos = extra.get_transform().location
             extra_vel = extra.get_velocity()
             # extra_acel = extra.get_acceleration()
             # sign = 0
-            if self.is_extra_front_than_ego(extra_pos) == True:
-                sign = 1
-            else:
-                sign = -1
+            extra_pos = extra.get_transform().location
             cur_agent_pos = self.player.get_transform().location
-            dr = sign * self.uclidian_distance(cur_agent_pos,extra_pos) - abs(self.spawn_waypoint.lane_width*(self.extra_dl_list[x]))
+
+            # if self.is_extra_front_than_this_point(extra_pos) == True:
+            #     sign = 1
+            # else:
+            #     sign = -1
+            # dr = sign * self.uclidian_distance(cur_agent_pos,extra_pos) - abs(self.spawn_waypoint.lane_width*(self.extra_dl_list[x]))
+            dr = self.get_dr(extra,x)
+            # print(dr)
+
             player_vel = (self.player.get_velocity().x** 2 + self.player.get_velocity().y** 2 + self.player.get_velocity().z** 2) ** 0.5
             dv =player_vel - (extra_vel.x ** 2 + extra_vel.y ** 2 + extra_vel.z ** 2) ** 0.5
             length = 2 * extra.bounding_box.extent.x # length of extra vehicle
@@ -767,6 +826,8 @@ class CarlaEnv():
 
         # state.append(self.ego_Lane)
         out = [state, x_static]
+
+
         return out
 
     def uclidian_distance(self,a,b):
@@ -790,11 +851,23 @@ class CarlaEnv():
         first_lane_waypoint = self.map.get_waypoint(actor.get_transform().location,
                                                    lane_type=carla.LaneType.Driving)  # self.controller.waypoint
 
+
         if first_lane_waypoint is not None:
-            while first_lane_waypoint.lane_id > -1:  # get waypoint of forth's lane
-                first_lane_waypoint = first_lane_waypoint.get_right_lane()
-                if first_lane_waypoint is None:
-                    return False
+            while first_lane_waypoint.lane_id != -1:  # get waypoint of forth's lane
+                #### for debug
+                # pre_last_lane_waypoint = last_lane_waypoint
+                # self.check = pre_last_lane_waypoint
+                #### for debug
+                first_lane_waypoint = first_lane_waypoint.get_left_lane()
+
+            # print("lane id : ", last_lane_waypoint.lane_id)
+        else:
+            print("getting last lane false2")
+            return False
+        # self.world.debug.draw_string(last_lane_waypoint.transform.location,
+        #                                      'o', draw_shadow=True,
+        #                                      color=carla.Color(r=255, g=255, b=0), life_time=9999)
+        return first_lane_waypoint
 
     def get_waypoint_of_last_lane(self,actor):
         last_lane_waypoint = self.map.get_waypoint(actor.get_transform().location, lane_type=carla.LaneType.Driving)  # self.controller.waypoint
@@ -825,6 +898,10 @@ class CarlaEnv():
         #                                      'o', draw_shadow=True,
         #                                      color=carla.Color(r=255, g=255, b=0), life_time=9999)
         return last_lane_waypoint
+
+    def save_input_info(self,info):
+
+    # def plot_state_action(self):
 
 
     def search_distance_valid(self):
@@ -1118,19 +1195,21 @@ class CarlaEnv():
             #     print(self.search_distance_valid())
             # print(self.controller.waypoint)
 
-
+            for num, extra in enumerate(self.extra_list):
+                self.get_dr(extra,num)
+            print(self.vehicles_distance_memory)
             if Keyboardcontrol.parse_events(client, self, clock):
                 return
 
-            self.spectator.set_transform(
-                carla.Transform(self.player.get_transform().location + carla.Location(z=100),
-                                carla.Rotation(pitch=-90)))
+            # self.spectator.set_transform(
+            #     carla.Transform(self.player.get_transform().location + carla.Location(z=100),
+            #                     carla.Rotation(pitch=-90)))
             # self.camera_rgb.render(display)
             # self.hud.render(display)
             # pygame.display.flip()
 
             # extra_pos = self.extra_list[0].get_transform().location
-            # print(self.is_extra_front_than_ego(extra_pos))
+            # print(self.is_extra_front_than_this_point(extra_pos))
 
             ## Get max lane ##
             # print("start get lane")
@@ -1260,7 +1339,6 @@ class CarlaEnv():
         # try:
 
         n_iters = 9999000
-        is_error = 0
 
         for epoch in range(epoch_init + 1, n_iters + 1):
             simulation_step = 0
@@ -1282,11 +1360,11 @@ class CarlaEnv():
                 # self.camera_rgb.render(display)
                 # self.hud.render(display)
                 # pygame.display.flip()
-
-                self.spectator.set_transform(
-                    carla.Transform(self.player.get_transform().location + carla.Location(z=150),
-                                    carla.Rotation(yaw=self.controller.waypoint.transform.rotation.yaw + 90,
-                                                   pitch=-90)))
+                # tmp = self.map.get_waypoint(self.player.get_location(), lane_type=carla.LaneType.Driving)
+                # tmp_rotation = tmp.transform.rotation
+                # tmp2=self.get_waypoint_of_last_lane(self.player)
+                self.spectator.set_transform(carla.Transform(self.player.get_transform().location + carla.Location(z=150),
+                                    carla.Rotation(pitch = -90)))
 
                 ## Get max lane ##
                 self.get_max_lane(lane_distance_between_points)
@@ -1539,8 +1617,27 @@ if __name__ == '__main__':
         world.unload_map_layer(carla.MapLayer.All)
         world.set_weather(weather)
         env=CarlaEnv(world)
-    except:
+        print('a')
+    # except:
+    #
+    #     if len(sensors) != 0:
+    #         # print('destroying actors.')
+    #         # print("actor 제거 :", self.actor_list)
+    #         for sensor in sensors:
+    #             if sensor.is_listening:
+    #                 sensor.stop()
+    #             sensor.destroy()
+    #
+    #     if len(actors) != 0:
+    #         for x in actors:
+    #             try:
+    #                 client.apply_batch([carla.command.DestroyActor(x.id)])
+    #             except:
+    #                 print("destroy error ")
 
+
+
+    except KeyboardInterrupt:
         if len(sensors) != 0:
             # print('destroying actors.')
             # print("actor 제거 :", self.actor_list)
@@ -1556,8 +1653,5 @@ if __name__ == '__main__':
                 except:
                     print("destroy error ")
 
-
-
-    # except KeyboardInterrupt:
-        # print('\nCancelled by user. Bye!')
+        print('\nCancelled by user. Bye!')
 
