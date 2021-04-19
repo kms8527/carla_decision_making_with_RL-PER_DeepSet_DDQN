@@ -607,7 +607,7 @@ class CarlaEnv():
         # print(reward)
         # if self.decision_changed == True:
         #     reward -= -1
-        self.accumulated_reward += 1+reward
+        self.accumulated_reward += reward
 
         #state length = 4 * num of extra vehicles + 1
 
@@ -1284,8 +1284,9 @@ class CarlaEnv():
                 # pygame.display.flip()
 
                 self.spectator.set_transform(
-                    carla.Transform(self.player.get_transform().location + carla.Location(z=100),
-                                    carla.Rotation(pitch=-90)))
+                    carla.Transform(self.player.get_transform().location + carla.Location(z=150),
+                                    carla.Rotation(yaw=self.controller.waypoint.transform.rotation.yaw + 90,
+                                                   pitch=-90)))
 
                 ## Get max lane ##
                 self.get_max_lane(lane_distance_between_points)

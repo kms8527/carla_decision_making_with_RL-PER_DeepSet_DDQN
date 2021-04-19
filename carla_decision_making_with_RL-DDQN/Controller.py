@@ -320,7 +320,7 @@ class Pure_puresuit_controller:
 
         # print(epsilon)
 
-        spacing_error = epsilon + self.h_constant*self.velocity+3
+        spacing_error = epsilon + self.h_constant*self.velocity+5
         # print(spacing_error)
         x_des_ddot = -1/self.h_constant * (epsilon + lamda * spacing_error)
         # print(x_des_ddot)
