@@ -26,6 +26,9 @@ import torch.nn.functional as F
 import numpy as np
 import random
 from collections import namedtuple
+import matplotlib.pyplot as plt
+import matplotlib
+
 
 Transition = namedtuple(
     'Transition', ('state', 'static', 'action','reward', 'next_state','next_static','done'))
@@ -37,9 +40,33 @@ class ReplayBuffer:
         self.priority = []
         self.batch_size = batch_size
 
+    def plot_buffer(self):
+        matplotlib.rcParams['axes.unicode_minus'] = False
+        matplotlib.rcParams['font.family'] = "AppleGothic"
+
+        left_val = 0
+        str_val = 0
+        right_val = 0
+        for sample in self.buffer:
+            if sample[2] == -1:
+                left_val +=1
+            elif sample[2]==0:
+                str_val += 1
+            else:
+                right_val +=1
+        # x=["왼쪽", "직진", "오른쪽"]
+        x=["left", "straight", "right"]
+
+        values = [left_val, str_val, right_val]
+        plt.bar(x,values)
+        plt.xlabel('decision',fontsize = 16)
+        plt.ylabel('data number',fontsize = 16)
+        plt.xticks(x, x)
+        plt.show()
+
     def get_priority_experience_batch(self):
         p_sum = np.sum(self.priority)
-        prob = self.priority / p_sum
+        prob = self.priority / p_sum+0.000000000000000001
         sample_indices = random.choices(range(len(prob)), k = self.batch_size, weights = prob)
         # importance = (1/prob) * (1/len(self.priority))
         # importance = np.array(importance)[sample_indices]
@@ -65,14 +92,22 @@ class ReplayBuffer:
         x0_static_ = torch.cat(x0_static)
         a_ = torch.tensor(a, dtype=torch.long)
         r_ = torch.tensor(r, dtype=torch.float)
-
-        non_fianl_s1 = torch.cat([s for s in with_final_s1 if s is not None])
-        non_final_x1_static = torch.cat([x for x in with_final_x1_static if x is not None])
         done_ = torch.tensor(done, dtype=torch.float)
+
+        tmp = [s for s in with_final_s1 if s is not None]
+
+        if len(tmp)!=0:
+            non_final_s1 = torch.cat(tmp)
+            non_final_x1_static = torch.cat([x for x in with_final_x1_static if x is not None])
+
+        else:
+            non_final_s1 = []
+            non_final_x1_static = []
+
 
         # arr1 = np.array(s0)
         # return np.concatenate(s0), a, r, np.concatenate(s1), done   #(32, 6, 96, 96)
-        return s0_, x0_static_, a_, r_, non_fianl_s1, with_final_s1, non_final_x1_static , done_
+        return s0_, x0_static_, a_, r_, non_final_s1, with_final_s1, non_final_x1_static , done_
 
 
     def uniform_make_minibatch(self,batch_size):
@@ -107,16 +142,17 @@ class decision_driving_Agent:
         self.is_training = is_training
         self.batch_size = 64
         self.selection_method = None
-        self.gamma = 0.9999
+        self.gamma = 0.99
         self.buffer = ReplayBuffer(self.batch_size)
 
         self.model  = DeepSet_D3QN(self.inputs_shape,20,3,80,self.num_actions,self.batch_size,self.extra_num).cuda()
+
         self.target_model = DeepSet_D3QN(self.inputs_shape,20,3,80,self.num_actions,self.batch_size,self.extra_num).cuda()
         self.epsilon = 1
 
         self.epsilon_min = 0.005
-        self.decaying = 0.999
-        self.learning_rate =0.001
+        self.decaying = 0.99
+        self.learning_rate =0.000001
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
         self.loss = 9999999999
         self.ROI_length = ROI_length #(meters)
@@ -125,7 +161,7 @@ class decision_driving_Agent:
         self.controller = controller
         self.q_value =0
 
-    def update_td_error_memory(self,epoch,alpha = 0.7):
+    def update_td_error_memory(self,alpha = 0.7):
         self.model.eval()
         self.target_model.eval()
 
@@ -170,7 +206,7 @@ class decision_driving_Agent:
         # if
         #     lane_change_safety_action_mask = [ if else for in ]
         strait_action_mask = [False if ego_lane % 1 == 0 else index for index, ego_lane in
-                              enumerate(non_final_x1_static[0:-1:3])]
+                              enumerate(non_final_x1_static[0::3])]
 
         non_final_a_m = [non_final_a_m[k].item() if k != False else 1 for k in strait_action_mask]
         # 다음 상태가 있는 것만을 걸러내고, size 32를 32*1로 변환
@@ -224,12 +260,17 @@ class decision_driving_Agent:
         out = [new_extra_lists, new_extra_dl_lists]
         return out
 
-    def act(self,state,x_static):
-
+    def update_epsilon(self,epoch):
         if self.epsilon > self.epsilon_min:
             self.epsilon = self.epsilon * self.decaying
         else:
             self.epsilon = max(self.epsilon,self.epsilon_min)
+
+        # if epoch >= 1000:
+        #     self.epislon_min = 0.00001
+
+
+    def act(self,state,x_static):
 
         # x_static = state[-1]
         # state = state[:-1]
@@ -244,7 +285,7 @@ class decision_driving_Agent:
                 self.q_value = self.model(state,x_static)
                 action =  int(self.q_value.argmax().item())-1
 
-            print("Q: ",self.q_value, "q_ACTION:",action)
+            print("Q: ",self.q_value.tolist(),"v: ",self.model.val.item(), "q_ACTION:",action)
 
             # print(self.q_value)
 
@@ -332,8 +373,6 @@ class decision_driving_Agent:
         # print("finished pick minibatch data")
         # print(s0)
 
-
-
         non_final_mask = torch.ByteTensor(tuple(map(lambda s: s is not None, with_fianl_s1))).type(torch.bool)
         # next_q_values = torch.zeros(self.batch_size)
 
@@ -347,64 +386,63 @@ class decision_driving_Agent:
 
         s0 = s0.cuda()
         x0_static = x0_static.cuda()
-        non_final_s1 = non_final_s1.cuda()
-        non_final_x1_static = non_final_x1_static.cuda()
         a = a.cuda()
         r = r.cuda()
         done = done.cuda()
+        if len(non_final_s1)!=0:
+            non_final_s1 = non_final_s1.cuda()
+            non_final_x1_static = non_final_x1_static.cuda()
 
         ##  forward  ##
         # print("start forward")
+
         self.model.eval()
         self.target_model.eval()
+        if len(non_final_s1)!=0:
+            a_m = torch.zeros(self.batch_size).type(torch.LongTensor).cuda()
+            a_m[non_final_mask] = self.model(non_final_s1, non_final_x1_static).detach().max(1)[1].cuda()
+            non_final_a_m = a_m[non_final_mask]
+            strait_action_mask = [False if ego_lane % 1 == 0 else index for index, ego_lane in enumerate(non_final_x1_static[0::3])]
+            non_final_a_m = [non_final_a_m[k].item() if k != False else 1 for k in strait_action_mask]
+            # 다음 상태가 있는 것만을 걸러내고, size 64를 64*1로 변환
+            non_final_a_m = torch.tensor(non_final_a_m).cuda()
+            a_m_non_final_next_states = non_final_a_m.view(-1, 1)
 
-        next_tartget_q = torch.zeros(self.batch_size).cuda()
-        a_m = torch.zeros(self.batch_size).type(torch.LongTensor).cuda()
+            # 다음 상태가 있는 인덱스에 대해 행동 a_m의 Q값을 target Q-Network로 계산
+            # detach() 메서드로 값을 꺼내옴
+            # squeeze() 메서드로 size[minibatch*1]을 [minibatch]로 변환
+            next_tartget_q = torch.zeros(self.batch_size).cuda()
+            next_tartget_q[non_final_mask] = self.target_model(non_final_s1,non_final_x1_static).gather(1, a_m_non_final_next_states).detach().squeeze()
+            expected_state_action_values = r + self.gamma * next_tartget_q
+        else:
+            expected_state_action_values = r
 
         q_values = self.model(s0, x0_static).cuda()
-        # action index form main_q
-
-        a_m[non_final_mask] = self.model(non_final_s1, non_final_x1_static).detach().max(1)[1].cuda()
-        non_final_a_m = a_m[non_final_mask]
-        strait_action_mask = [False if ego_lane % 1 == 0 else index for index, ego_lane in enumerate(non_final_x1_static[0:-1:3])]
-        non_final_a_m = [non_final_a_m[k].item() if k != False else 1 for k in strait_action_mask]
-        # 다음 상태가 있는 것만을 걸러내고, size 64를 64*1로 변환
-        non_final_a_m = torch.tensor(non_final_a_m).cuda()
-        a_m_non_final_next_states = non_final_a_m.view(-1, 1)
-
-        # 다음 상태가 있는 인덱스에 대해 행동 a_m의 Q값을 target Q-Network로 계산
-        # detach() 메서드로 값을 꺼내옴
-        # squeeze() 메서드로 size[minibatch*1]을 [minibatch]로 변환
-        next_tartget_q[non_final_mask] = self.target_model(non_final_s1,non_final_x1_static).gather(1, a_m_non_final_next_states).detach().squeeze()
         q_value = q_values.gather(1, a.unsqueeze(1) + 1).squeeze(1)
-        expected_state_action_values = r + self.gamma * next_tartget_q
+
+        # print("q_value: ",q_value,"expected_target_q: ",expected_state_action_values,"next_target_q: ",next_tartget_q)
         self.model.train()
         # 0 : 좌회전 , 1 : 직진 : 2 : 우회전 시 Q value
         # self.loss = F.smooth_l1_loss(q_value, expected_state_action_values)
-        self.loss = F.mse_loss(q_value, expected_state_action_values).mean()
+        self.loss = F.mse_loss(q_value, expected_state_action_values)
 
         # zero the gradients after updating
         self.optimizer.zero_grad()
 
         ##  backward  ##
-
         self.loss.backward()
 
         ##  update weights  ##
         self.optimizer.step()
-
         self.model.eval()
         self.target_model.eval()
 
-        q_value = self.model(s0, x0_static).cuda().gather(1, a.unsqueeze(1) + 1).squeeze(1)
-        next_tartget_q[non_final_mask] = self.target_model(non_final_s1,non_final_x1_static).gather(1, a_m_non_final_next_states).detach().squeeze()
+        ##
+        # self.test(s0,x0_static,a,r,non_final_mask,non_final_s1,non_final_x1_static)
+        ##
         # expected_state_action_values = r + self.gamma * next_tartget_q
-        if self.loss-F.mse_loss(q_value, expected_state_action_values).mean() >0:
-            pass
-        else:
-            print("increase loss")
-            self.learning_rate /=2
-            self.learning_rate = max(self.learning_rate,0.00001)
+
+
 
 # class phi_network(nn.Module):
 #     def __init__(self,input_size, hidden_size,feature_size):
@@ -416,6 +454,44 @@ class decision_driving_Agent:
 #         self.relue = nn.ReLU()
 #     def forward(self,x):
 #         x.view(-1)
+    def test(self,s0,x0_static,a,r,non_final_mask,non_final_s1,non_final_x1_static):
+        self.model.eval()
+        self.target_model.eval()
+
+        if len(non_final_s1) != 0:
+            a_m = torch.zeros(self.batch_size).type(torch.LongTensor).cuda()
+            a_m[non_final_mask] = self.model(non_final_s1, non_final_x1_static).detach().max(1)[1].cuda()
+            non_final_a_m = a_m[non_final_mask]
+            strait_action_mask = [False if ego_lane % 1 == 0 else index for index, ego_lane in
+                                  enumerate(non_final_x1_static[0::3])]
+            non_final_a_m = [non_final_a_m[k].item() if k != False else 1 for k in strait_action_mask]
+            # 다음 상태가 있는 것만을 걸러내고, size 64를 64*1로 변환
+            non_final_a_m = torch.tensor(non_final_a_m).cuda()
+            a_m_non_final_next_states = non_final_a_m.view(-1, 1)
+
+            # 다음 상태가 있는 인덱스에 대해 행동 a_m의 Q값을 target Q-Network로 계산
+            # detach() 메서드로 값을 꺼내옴
+            # squeeze() 메서드로 size[minibatch*1]을 [minibatch]로 변환
+            next_tartget_q = torch.zeros(self.batch_size).cuda()
+            next_tartget_q[non_final_mask] = self.target_model(non_final_s1, non_final_x1_static).gather(1,
+                                                                                                         a_m_non_final_next_states).detach().squeeze()
+            expected_state_action_values = r + self.gamma * next_tartget_q
+        else:
+            expected_state_action_values = r
+
+        q_values = self.model(s0, x0_static).cuda()
+        q_value = q_values.gather(1, a.unsqueeze(1) + 1).squeeze(1)
+
+        loss = F.mse_loss(q_value, expected_state_action_values)
+        if self.loss- loss >0:
+            # print("decrease loss:",(self.loss-loss))
+            pass
+        else:
+            print("increase loss")
+            print("before loss:",self.loss, "after loss:", loss)
+            # self.test(s0,x0_static,a,r,non_final_mask,non_final_s1,non_final_x1_static)
+            self.learning_rate /=2
+            self.learning_rate = max(self.learning_rate,0.000001)
 
 class DQN(nn.Module):
     def __init__(self,input_size,feature_size,x_static_size, hidden_size, output_size,batch_size,extra_num):
@@ -490,6 +566,8 @@ class DeepSet_D3QN(nn.Module):
         self.fc3_adv = nn.Linear(hidden_size, output_size)
         self.fc3_v = nn.Linear(hidden_size,1)
         self.relu = nn.ReLU()
+
+        self.val = 0.0
         # self.softmax = nn.Softmax(dim = 1)
 
     def forward(self, x, x_static):
@@ -511,7 +589,8 @@ class DeepSet_D3QN(nn.Module):
         out = self.l2(out)
         out = self.relu(out)
         adv = self.fc3_adv(out)
-        val = self.fc3_v(out).expand(-1,adv.size(1))
+        self.val = self.fc3_v(out)
+        val = self.val.expand(-1,adv.size(1))
         out = val + adv - adv.mean(1,keepdim=True).expand(-1,adv.size(1))
         # out = self.softmax(out)
         return out

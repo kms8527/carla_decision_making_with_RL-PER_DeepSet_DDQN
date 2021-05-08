@@ -1,2 +1,3 @@
 tensorboard --logdir=runs
 명령어 터미네이터에 입력
+1]

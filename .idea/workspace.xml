@@ -3,7 +3,10 @@
   <component name="ChangeListManager">
     <list default="true" id="882d62b1-9004-42d3-9ad9-3a9be8b261af" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/Controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/Controller.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/decision_trainer.py" beforeDir="false" afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/decision_trainer.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py" beforeDir="false" afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/텐서보드 켜기.txt" beforeDir="false" afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/텐서보드 켜기.txt" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -25,7 +28,7 @@
     <property name="SHARE_PROJECT_CONFIGURATION_FILES" value="true" />
     <property name="WebServerToolWindowFactoryState" value="false" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
-    <property name="settings.editor.selected.configurable" value="preferences.keymap" />
+    <property name="settings.editor.selected.configurable" value="com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable" />
   </component>
   <component name="RunManager" selected="Python.main_decision">
     <configuration name="Controller" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
@@ -97,8 +100,8 @@
     <recent_temporary>
       <list>
         <item itemvalue="Python.main_decision" />
-        <item itemvalue="Python.Controller" />
         <item itemvalue="Python.decision_trainer" />
+        <item itemvalue="Python.Controller" />
       </list>
     </recent_temporary>
   </component>
@@ -113,7 +116,12 @@
       <workItem from="1617830190796" duration="177000" />
       <workItem from="1617830473714" duration="10714000" />
       <workItem from="1617859569094" duration="72340000" />
-      <workItem from="1618550848529" duration="6848000" />
+      <workItem from="1618550848529" duration="9867000" />
+      <workItem from="1619405578106" duration="4622000" />
+      <workItem from="1619503173456" duration="59007000" />
+      <workItem from="1620335224147" duration="135000" />
+      <workItem from="1620335376477" duration="13562000" />
+      <workItem from="1620363422427" duration="3012000" />
     </task>
     <task id="LOCAL-00001" summary="first commit">
       <created>1617859681585</created>
@@ -262,7 +270,14 @@
       <option name="project" value="LOCAL" />
       <updated>1618829609282</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="get_dr changed">
+      <created>1618829618808</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1618829618808</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -301,29 +316,39 @@
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/decision_trainer.py</url>
-          <line>112</line>
-          <option name="timeStamp" value="21" />
+          <url>file://$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py</url>
+          <line>1019</line>
+          <option name="timeStamp" value="26" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/decision_trainer.py</url>
-          <line>368</line>
-          <option name="timeStamp" value="22" />
+          <url>file://$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py</url>
+          <line>949</line>
+          <option name="timeStamp" value="28" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
     <watches-manager>
       <configuration name="PythonConfigurationType">
-        <watch expression="last_lane_waypoint.lane_id " language="Python" />
-        <watch expression="self.index" language="Python" />
+        <watch expression="data_list" language="Python" />
+        <watch expression="data_list[::-1]" language="Python" />
         <watch expression="len(self.lane_change_point)" language="Python" />
+        <watch expression="x" language="Python" />
+        <watch expression="non_final_s1" language="Python" />
+        <watch expression="self.search_distance_valid() / self.ROI_length" language="Python" />
+        <watch expression="self.search_distance_valid()" language="Python" />
+        <watch expression="break" language="Python" />
+        <watch expression="self.agent.model(state, x_static).detach()" language="Python" />
+        <watch expression="self.agent.model.val" language="Python" />
+        <watch expression="lane_num" language="Python" />
+        <watch expression="data_list" language="Python" />
+        <watch expression="plt.xticks(x, values)" language="Python" />
       </configuration>
     </watches-manager>
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/per_deepset_Q_ddqn$main_decision.coverage" NAME="main_decision Coverage Results" MODIFIED="1620367812441" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
+    <SUITE FILE_PATH="coverage/per_deepset_Q_ddqn$decision_trainer.coverage" NAME="decision_trainer Coverage Results" MODIFIED="1620353879065" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
     <SUITE FILE_PATH="coverage/carla_decision_making_with_RL_DDQN_1_$main_decision.coverage" NAME="main_decision Coverage Results" MODIFIED="1617859445847" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
-    <SUITE FILE_PATH="coverage/per_deepset_Q_ddqn$decision_trainer.coverage" NAME="decision_trainer Coverage Results" MODIFIED="1618040155226" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
-    <SUITE FILE_PATH="coverage/per_deepset_Q_ddqn$main_decision.coverage" NAME="main_decision Coverage Results" MODIFIED="1618375894513" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
     <SUITE FILE_PATH="coverage/per_deepset_Q_ddqn$Controller.coverage" NAME="Controller Coverage Results" MODIFIED="1618242305105" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
   </component>
 </project>
