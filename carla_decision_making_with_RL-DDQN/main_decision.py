@@ -950,7 +950,7 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
         data_list = torch.cat(data_list).tolist()
         data_list = data_list[::-1]
         # data_list = data_list[-1::]
-`
+
         data = np.reshape(data_list, (4, -1))
 
         ay = [1, 2, 3, 4]
