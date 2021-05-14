@@ -58,7 +58,6 @@ class Pure_puresuit_controller:
         # self.world.debug.draw_string(self.my_location_waypoint.transform.location, 'o', draw_shadow=True,
         #                              color=carla.Color(r=255, g=255, b=255), life_time=9999)
         self.pre_my_location_waypoint = self.my_location_waypoint
-        self.desired_vel_ = desired_vel
         self.desired_vel = desired_vel
         self.velocity = 0 #km/h
 
@@ -99,47 +98,66 @@ class Pure_puresuit_controller:
         self.h_constant = 1.3
         self.is_start_to_lane_change = False
         self.is_lane_changing = False
+        self.is_fin_to_lane_change = False
         self.decision = None
         self.pre_decision = None
+        self.check = 0
+        self.vel_history = 0
+        self.history_num = 0
+        self.lane_change_history = 0
 
     def apply_control(self,decision):
+        if decision !=0:
+            self.lane_change_history += 1
+        self.check = 0
         self.decision = decision
         dt = time.time() - self.t
         self.safe_distance = int(self.h_constant*self.velocity+20)
 
-        # print(1/dt)
+        self.is_fin_to_lane_change = False # when it doesnt get into the lane change waypoint still false
+
+        self.history_num +=1
+        self.vel_history = (self.vel_history * (self.history_num - 1) + self.velocity) / self.history_num
+
+        if self.is_start_to_lane_change == True:
+            self.is_lane_changing = True
+            self.is_start_to_lane_change = False
+
+        if decision !=0:
+            self.is_start_to_lane_change = True
+
         ## waypoint update ##
         if self.waypoint is None:
             return False
 
         if self.ld < self.player_length+self.waypoint.lane_width:
+            self.desired_vel = 70.0
 
             waypoints = self.waypoint.next(int(self.velocity / 3.6 * 0.3 + 3))
-            self.desired_vel = self.desired_vel_
             if len(waypoints) ==0:
                 return False
             else:
                 self.waypoint = waypoints[0]
 
-            self.is_lane_changing = False
+            if self.is_lane_changing == True:
+                self.is_fin_to_lane_change = True
+                self.is_lane_changing = False
+
+
+
+                # self.world.debug.draw_string(self.waypoint.transform.location, 'o', draw_shadow=True,
+                #                          color=carla.Color(r=255, g=0, b=255), life_time=999)
+
 
             # self.world.debug.draw_string(self.waypoint.transform.location, 'o', draw_shadow=True,
             #                          color=carla.Color(r=0, g=0, b=255), life_time=0.01)
 
-        if self.is_start_to_lane_change == True:
-            self.is_lane_changing = True
-
-        self.is_start_to_lane_change = False
-
-
         if self.decision == 1:
             print("right 차선 변경 수행")
+            self.desired_vel = 50
             self.leading_vehicle = None
-            self.is_start_to_lane_change = True
-            self.desired_vel = self.desired_vel_-10
 
             waypoints = self.waypoint.next(int(self.velocity / 1.4 + 3))
-            # self.desired_vel =
             if len(waypoints) == 0:
                 print("오른쪽 판단, waypoint 존재 x")
                 return False
@@ -152,9 +170,8 @@ class Pure_puresuit_controller:
 
         elif self.decision == -1:
             print("left 차선 변경 수행")
+            self.desired_vel = 50
             self.leading_vehicle = None
-            self.is_start_to_lane_change = True
-            self.desired_vel = self.desired_vel_-10
 
             # self.player.set_autopilot(False)
             waypoints = self.waypoint.next(int(self.velocity / 1.4 + 3))
@@ -200,9 +217,11 @@ class Pure_puresuit_controller:
             self.world.debug.draw_string(self.leading_vehicle.get_transform().location, 'o', draw_shadow=True,
                                          color=carla.Color(r=0, g=255, b=0), life_time=0.01)
         loop_break = False
-        self.search_leading_vehicle()
+        is_error = self.search_leading_vehicle()
+        if is_error == False:
+            return False
 
-        if self.leading_vehicle is not None   : #전방 차량이 없거나 없어졌을 때 다시 전방 차량을 찾아줌. 없으면 None값으로 초기화
+        if self.leading_vehicle is not None: #전방 차량이 없거나 없어졌을 때 다시 전방 차량을 찾아줌. 없으면 None값으로 초기화
 
             self.leading_distance = ((self.leading_vehicle.get_transform().location.x - self.player.get_transform().location.x) ** 2 + (
                                         self.leading_vehicle.get_transform().location.y - self.player.get_transform().location.y) ** 2 + (
@@ -255,8 +274,18 @@ class Pure_puresuit_controller:
 
         # print(self.waypoint.section_id)
         # print(self.waypoint.lane_width)
+        self.pre_my_location_waypoint = self.my_location_waypoint
         self.t = time.time()
 
+        # if self.is_lane_changing:
+        #     self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
+        #                                  color=carla.Color(r=0, g=255, b=255), life_time=1)
+        # elif self.is_start_to_lane_change:
+        #     self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
+        #                                  color=carla.Color(r=255, g=0, b=0), life_time=1)
+        # elif self.is_fin_to_lane_change:
+        #     self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
+        #                                  color=carla.Color(r=0, g=0, b=255), life_time=1)
     def search_leading_vehicle(self):
         loop_break = False
         self.my_location_waypoint = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving)
@@ -285,7 +314,7 @@ class Pure_puresuit_controller:
                     next_waypoints = self.my_location_waypoint.next(x)
                     self.pre_my_location_waypoint = self.my_location_waypoint
 
-                if len(next_waypoints) == 0:
+                if next_waypoints is None or len(next_waypoints)==0:
                     print("next waypoints is none")
                     return False
                 else:
@@ -305,10 +334,12 @@ class Pure_puresuit_controller:
 
 
     def control_input(self):
-
         if self.a>=0:
             self.a =min(self.a,1)
             self.player.apply_control(carla.VehicleControl(throttle=self.a, steer=self.steer, brake=0.0))
+            # print("self.a:", self.a)
+            # print("self.accel:", (self.player.get_acceleration().x**2+self.player.get_acceleration().y**2+self.player.get_acceleration().z**2)**0.5)
+            # print("self.vel:",(self.player.get_velocity().x**2+self.player.get_velocity().y**2+self.player.get_velocity().z**2)**0.5)
 
 
         else:

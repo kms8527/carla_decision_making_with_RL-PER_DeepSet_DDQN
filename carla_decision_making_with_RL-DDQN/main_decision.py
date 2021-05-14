@@ -28,8 +28,8 @@ from torch.utils.tensorboard import SummaryWriter
 import torch
 import seaborn as sns
 import matplotlib.pyplot as plt
-
-writer = SummaryWriter()#'runs/May03_18-49-35_a'
+import pyautogui
+writer = SummaryWriter()#'runs/May10_08-05-04_a')#runs/May09_13-35-46_a')
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -57,12 +57,16 @@ class CarlaEnv():
     font = pygame.font.init()
 
     def __init__(self,world):
-        self.safety_mode = False
+        # GPU_NUM = 1  # 원하는 GPU 번호 입력
+        # device = torch.device(f'cuda:{GPU_NUM}' if torch.cuda.is_available() else 'cpu')
+        # torch.cuda.set_device(device)  # change allocation of current GPU
+
+        self.safety_mode = True
+        self.mission_mode = True
         #화면 크기
         self.start_epoch = True
         self.input_size = 4  # dr dv da dl
         self.output_size = 3
-        n_iters = 100
         self.width = 800
         self.height = 600
         #센서 종류
@@ -84,9 +88,12 @@ class CarlaEnv():
         self.world = world
         self.map = world.get_map()
         self.spectator = self.world.get_spectator()
+        self.mission_goal_point = self.map.get_waypoint(carla.Location(x=-137.000275, y=16.263311, z=7.994740),
+                                                    lane_type=carla.LaneType.Driving).transform.location
+
         self.hud = HUD(self.width, self.height)
         # self.spawn_waypoints = self.map.generate_waypoints(3.0)
-        self.lane_change_time = time.time()
+        self.lane_change_time = time.time()-100.0
         self.max_Lane_num = 4
         self.ego_Lane = 2
         self.pre_ego_lane = self.ego_Lane
@@ -97,7 +104,6 @@ class CarlaEnv():
         self.pre_decision = 0
         self.simul_time = time.time()
         self.accumulated_reward = 0
-        self.offline_learning_epoch = 0
         self.accumulated_loss = 0
 
         self.end_point = 0
@@ -108,18 +114,26 @@ class CarlaEnv():
         self.right_search_radius = None
         self.decision_changed = False
         self.check = 0
+        self.append_lane_change_sample=False
         self.current_ego_lane =0
 
+        # about mission mode #
+        self.collision_num = 0
+        self.left_col_num = 0
+        self.right_col_num = 0
+        self.exit_lane_col_num = 0
+        self.mission_clear_num = 0
+        self.iter = 0
+        self.eplased_time = 0
         ## visualize all waypoints ##
         # for n, p in enumerate(self.spawn_waypoints):
         #     world.debug.draw_string(p.transform.location, 'o', draw_shadow=True,
         #                             color=carla.Color(r=255, g=255, b=255), life_time=999)
 
         settings = self.world.get_settings()
-        # settings.no_rendering_mode = True
-        # settings.synchronous_mode = True
+        # settings.synchronous_mode = True  # Enables synchronous mode
+        # world.apply_settings(settings)
         settings.fixed_delta_seconds = 0.01
-        # settings.synchronous_mode = True
         self.world.apply_settings(settings)
         self.extra_num = 20
         self.scenario =  "random"# "scenario3" # #
@@ -134,11 +148,15 @@ class CarlaEnv():
         self.distance_memory = None
         self.vehicles_distance_memory = torch.zeros(self.extra_num)
         self.pre_max_Lane_num = self.max_Lane_num
+        self.ready_to_store_sample = False
+        self.is_lane_out = False
         self.restart()
         self.main()
 
     def restart(self):
+        self.is_lane_out = False
         self.check = 0
+        self.append_lane_change_sample=False
         self.decision = 0
         self.pre_decision = 0
         self.decision_changed = False
@@ -147,17 +165,23 @@ class CarlaEnv():
         self.vehicles_distance_memory = torch.zeros(self.extra_num)
         self.lane_change_time = time.time()-100.0
         self.can_lane_change = True
+        self.pre_can_lane_change = True
+        self.ready_to_store_sample = False
+        # print("-----start-------")
+        # print("pre:", self.pre_can_lane_change)
+        # print("pre:", self.can_lane_change)
+        # print("------------")
         self.max_Lane_num = 4
         self.ego_Lane = 2
         self.pre_ego_lane = self.ego_Lane
         self.controller = None
         self.accumulated_reward = 0
         self.acummulated_loss = 0
-        self.offline_learning_epoch = 0
         self.section = 0
         self.episode_start = time.time()
         self.pre_max_Lane_num = self.max_Lane_num
         self.index = 0
+        self.arrive_lane_chagne_change_point = False
         # print('start destroying actors.')
 
         self.clear_all_actors()
@@ -222,7 +246,7 @@ class CarlaEnv():
         # self.actor_list.append(self.gnss_sensor.sensor)
 
         self.spectator.set_transform(
-            carla.Transform(self.player.get_transform().location + carla.Location(z=100),
+            carla.Transform(self.player.get_transform().location + carla.Location(z=130),
                             carla.Rotation(pitch=-90)))
 
         # --------------
@@ -235,8 +259,6 @@ class CarlaEnv():
         blueprints = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
         # print(*blueprints)
         spawn_point = None
-
-
 
         if self.scenario == "random":
             distance_step = 20
@@ -254,7 +276,6 @@ class CarlaEnv():
                     print("Except ")
                 spawn_point = carla.Transform((spawn_point.location + carla.Location(z=1)), spawn_point.rotation)
                 spawn_points.append(spawn_point)
-                # print(spawn_point)
                 # print(blueprint_library.filter('vehicle.bmw.grandtourer'))
                 # blueprint = random.choice(blueprint_library.filter('vehicle.bmw.grandtourer'))
 
@@ -266,25 +287,26 @@ class CarlaEnv():
                         # print(blueprint.get_attribute('color').recommended_values)
                         color = '255,255,255'
                         blueprint.set_attribute('color', color)
+
                 extra = self.world.spawn_actor(blueprint,spawn_point)
                 self.extra_list.append(extra)
                 actors.append(extra)
 
-            # print(self.extra_dl_list)
-
             # spawn_point = carla.Transform(carla.Location(x=14.797643, y=-163.310318, z=2.000000),
             #                               carla.Rotation(pitch=0.000000, yaw=-450.224854, roll=0.000000))
             # blueprint = random.choice(blueprints)
-
+            # print("spawn_points:",*spawn_points)
+            # print(self.extra_dl_list)
             for extra in self.extra_list:
                 if self.pilot_style == "auto":
                     extra.set_autopilot()
                 elif self.pilot_style == "manual":
+
                     tm.auto_lane_change(extra, False)
                     # controller = Pure_puresuit_controller(extra, self.spawn_waypoint, None, 30)  # km/h
                     # self.extra_controller_list.append(controller)
-                    # target_velocity = 30  # random.randrange(10, 40) # km/h
-                    # extra.set_target_velocity(extra.get_transform().get_forward_vector() * target_velocity / 3.6)
+                    target_velocity = 30  # random.randrange(10, 40) # km/h
+                    extra.set_target_velocity(extra.get_transform().get_forward_vector() * target_velocity / 3.6)
 
                     # extra.enable_constant_velocity(extra.get_transform().get_forward_vector() * target_velocity / 3.6)
                     extra.set_autopilot(True,tm_port)
@@ -410,30 +432,16 @@ class CarlaEnv():
             trash_extra.enable_constant_velocity(extra.get_transform().get_right_vector() * 0.0 / 3.6)
             trash_extra.destroy()
         elif self.scenario == "validation":
-            self.extra_dl_list = [-1, 0, 1, -1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, -1, 1, 1, 1, -1]
-            spawn_points = [carla.Transform(carla.Location(x=4.523634, y=-105.706322, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)),
-carla.Transform(carla.Location(x=7.945116, y=-125.719902, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)),
-carla.Transform(carla.Location(x=11.366597, y=-145.733475, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)),
-carla.Transform(carla.Location(x=4.288160, y=-165.705856, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-450.224854, roll=0.000000)),
-carla.Transform(carla.Location(x=7.709642, y=-185.719437, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)),
-carla.Transform(carla.Location(x=7.631151, y=-205.719284, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)),
-carla.Transform(carla.Location(x=7.665174, y=-225.382843, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-88.029251, roll=0.000000)),
-carla.Transform(carla.Location(x=12.947311, y=-243.634933, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-80.877213, roll=0.000000)),
-carla.Transform(carla.Location(x=13.645301, y=-262.623138, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-73.725182, roll=0.000000)),
-carla.Transform(carla.Location(x=23.273172, y=-279.004364, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-66.573143, roll=0.000000)),
-carla.Transform(carla.Location(x=28.640923, y=-297.231445, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-59.421112, roll=0.000000)),
-carla.Transform(carla.Location(x=39.249458, y=-312.867889, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-52.269077, roll=0.000000)),
-carla.Transform(carla.Location(x=54.202156, y=-324.592102, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-45.117043, roll=0.000000)),
-carla.Transform(carla.Location(x=65.865158, y=-339.592590, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-37.965008, roll=0.000000)),
-carla.Transform(carla.Location(x=81.458138, y=-350.264893, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-30.812973, roll=0.000000)),
-carla.Transform(carla.Location(x=96.853889, y=-362.118622, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-23.660938, roll=0.000000)),
-carla.Transform(carla.Location(x=116.999451, y=-362.046082, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-16.508904, roll=0.000000)),
-carla.Transform(carla.Location(x=134.990097, y=-366.177338, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-9.356870, roll=0.000000)),
-carla.Transform(carla.Location(x=153.355103, y=-368.036591, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-2.204835, roll=0.000000)),
-carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.Rotation(pitch=0.000000, yaw=0.501399, roll=0.000000))]
-            blueprint = random.choice(blueprint_library.filter('vehicle.bmw.grandtourer'))
-
+            self.extra_dl_list=[0, 0, 1, -1, 1, 1, -1, 0, 1, 0, 1, -1, -1, 1, 0, -1, -1, 0, 0, -1]
+            spawn_points = [carla.Transform(carla.Location(x=8.023607, y=-105.720062, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=7.945116, y=-125.719902, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=11.366597, y=-145.733475, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=4.288160, y=-165.705856, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-450.224854, roll=0.000000)), carla.Transform(carla.Location(x=11.209615, y=-185.733170, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=11.131124, y=-205.733017, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=4.167244, y=-225.503204, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-88.029251, roll=0.000000)), carla.Transform(carla.Location(x=9.491584, y=-244.189850, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-80.877213, roll=0.000000)), carla.Transform(carla.Location(x=17.005051, y=-261.642273, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-73.725182, roll=0.000000)), carla.Transform(carla.Location(x=20.061684, y=-280.395905, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-66.573143, roll=0.000000)), carla.Transform(carla.Location(x=31.654175, y=-295.450928, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-59.421112, roll=0.000000)), carla.Transform(carla.Location(x=36.481331, y=-315.009735, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-52.269077, roll=0.000000)), carla.Transform(carla.Location(x=49.242310, y=-329.531738, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-45.117043, roll=0.000000)), carla.Transform(carla.Location(x=68.018288, y=-336.833252, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-37.965008, roll=0.000000)), carla.Transform(carla.Location(x=81.458138, y=-350.264893, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-30.812973, roll=0.000000)), carla.Transform(carla.Location(x=96.853889, y=-362.118622, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-23.660938, roll=0.000000)), carla.Transform(carla.Location(x=115.010300, y=-368.757507, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-16.508904, roll=0.000000)), carla.Transform(carla.Location(x=134.421051, y=-369.630768, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-9.356870, roll=0.000000)), carla.Transform(carla.Location(x=153.220459, y=-371.533997, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-2.204835, roll=0.000000)), carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.Rotation(pitch=0.000000, yaw=0.501399, roll=0.000000))]
             for spawn_point in spawn_points:
+                blueprint = random.choice(blueprints)
+
+                if blueprint.has_attribute('color'):
+                    # color = random.choice(blueprint.get_attribute('color').recommended_values)
+                    # print(blueprint.get_attribute('color').recommended_values)
+                    color = '255,255,255'
+                    blueprint.set_attribute('color', color)
 
                 extra = self.world.spawn_actor(blueprint, spawn_point)
                 self.extra_list.append(extra)
@@ -453,16 +461,11 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                     extra.set_autopilot(True, tm_port)
 
                     self.world.constant_velocity_enabled = True
-
-
-
-
-            # traffic_manager.auto_lane_change(extra,False)
+                    # traffic_manager.auto_lane_change(extra,False)
         # print('Extra Genration Finished')
 
         # tmp = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving)
         # tmp_rotation = tmp.transform.rotation
-
 
         # extra_target_velocity = 10
 
@@ -631,7 +634,7 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
         # elif action == 1:  # right
         #     plc += 10
         #     decision = 1
-
+        pre_ego_lane = self.ego_Lane
         tmp = self.get_next_state(decision)  # get now state
 
         if tmp is None:
@@ -640,31 +643,46 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             next_state, next_x_static = tmp
 
         # end_length=math.sqrt((self.end_point.x - self.player.get_location().x)**2+(self.end_point.y - self.player.get_location().y)**2)
+
         done = False
         if len(self.collision_sensor.history) != 0:
             done = True
-            print("collision")
-            reward = -7
-        elif time.time()-self.simul_time > 25:
-            print("simultime done")
+            # print("collision")
+            self.collision_num +=1
+            reward = -10
+        elif decision == 1 and pre_ego_lane >= self.max_Lane_num:  # dont leave max lane
             done = True
-            reward =0
-        elif decision == 1 and self.ego_Lane >= self.max_Lane_num:  # dont leave max lane
-            done = True
+            self.is_lane_out = True
+            self.right_col_num +=1
             print("lane right collision")
-            reward = -7
-        elif decision == -1 and self.ego_Lane <= 1:  # dont leave min lane
+            reward = -10
+        elif decision == -1 and pre_ego_lane <= 1:  # dont leave min lane
             done = True
+            self.left_col_num +=1
+            self.is_lane_out = True
             print("lane left collision")
-            reward = -7
+            reward = -10
         elif next_x_static[2] < 0 and self.ego_Lane > self.max_Lane_num :
             done = True
+            self.exit_lane_col_num +=1
+            self.is_lane_out = True
             # print("ego_Lane",self.ego_Lane,"mam lane",self.max_Lane_num)
             print("Agent get into exit, Done")
-            reward = -7
+            reward = -10
         else:
-            reward = (0.5-0.5*abs(70.0 - self.controller.velocity)/70.0)**2 - plc
+            reward = (1-1*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))**3-plc
             # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
+
+        if self.safety_mode == False:
+            if time.time()-self.simul_time > 25:
+                print("simultime done")
+                done = True
+                reward = 0
+        else:
+            if self.uclidian_distance(self.get_waypoint_of_first_lane(self.player).transform.location,self.mission_goal_point) < 5:
+                self.mission_clear_num +=1
+                done = True
+                reward = 0
 
         # print("ego:", self.ego_Lane, "max_lane", self.max_Lane_num,"decision:", decision)
 
@@ -675,10 +693,8 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
 
         #state length = 4 * num of extra vehicles + 1
 
-
         return None, None, decision ,reward, next_state, next_x_static , done
                                         # Next State 표현 필요
-
 
     def get_dr(self,extra,num):
         ego_forth_lane = self.get_waypoint_of_first_lane(self.player)
@@ -704,18 +720,15 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
 
         if self.vehicles_distance_memory[num] != 0:
             if self.vehicles_distance_memory[num] > 0:
-                tmp = waypoint.next(self.vehicles_distance_memory[num].item())
+                if isinstance(waypoint,bool) or len(waypoint.next(self.vehicles_distance_memory[num].item()))==0:
+                    return False
+                tmp = waypoint.next(self.vehicles_distance_memory[num].item())[0].transform
 
             elif self.vehicles_distance_memory[num] < 0:
-                tmp = waypoint.previous(abs(self.vehicles_distance_memory[num].item()))
+                if isinstance(waypoint,bool) or len( waypoint.previous(abs(self.vehicles_distance_memory[num].item())))==0:
+                    return False
+                tmp = waypoint.previous(abs(self.vehicles_distance_memory[num].item()))[0].transform
 
-            if tmp is None:
-                return False
-            else:
-                tmp = tmp[0].transform
-                # self.world.debug.draw_string(tmp.location,
-                #                              'o', draw_shadow=True,
-                #                              color=carla.Color(r=255, g=0, b=0), life_time=1)
 
 
             if self.is_extra_front_than_this_point(extra_forth_pos,tmp):
@@ -729,6 +742,9 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             while self.uclidian_distance(waypoint.transform.location, extra_forth_pos) >= 2 * step:
                 waypoint = waypoint.next(step)[0]
 
+                # self.world.debug.draw_string(waypoint.transform.location,
+                #                              'o', draw_shadow=True,
+                #                              color=carla.Color(r=0, g=255, b=255), life_time=1)
 
                 distance1 += step
             self.vehicles_distance_memory[num] = distance1 + self.uclidian_distance(waypoint.transform.location, extra_forth_pos)
@@ -744,21 +760,12 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
 
         for x, extra in enumerate(self.extra_list):
 
-            if self.can_lane_change == True:
-                # print("finished lane change", self.pre_decision)
-                if self.pre_decision == 1.0:
-                    # print("finish right")
-                    self.extra_dl_list[x] = math.floor(self.extra_dl_list[x]) / 1.0
-                elif self.pre_decision == -1.0:
-                    # print("finish left")
-                    self.extra_dl_list[x] = math.ceil(self.extra_dl_list[x]) / 1.0
-
             if decision == 1:
-                self.extra_dl_list[x] =self.extra_dl_list[x]-0.5
+                self.extra_dl_list[x] =self.extra_dl_list[x]-1
                 # self.ROI_extra_dl_list[x] =self.ROI_extra_dl_list[x]+1
 
             elif decision == -1:
-                self.extra_dl_list[x] = self.extra_dl_list[x]+0.5
+                self.extra_dl_list[x] = self.extra_dl_list[x]+1
                 # self.ROI_extra_dl_list[x] = self.ROI_extra_dl_list[x]-1
 
             else:
@@ -767,8 +774,9 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             extra_vel = extra.get_velocity()
             # extra_acel = extra.get_acceleration()
             # sign = 0
-            extra_pos = extra.get_transform().location
-            cur_agent_pos = self.player.get_transform().location
+
+            # extra_pos = extra.get_transform().location
+            # cur_agent_pos = self.player.get_transform().location
 
             # if self.is_extra_front_than_this_point(extra_pos) == True:
             #     sign = 1
@@ -776,21 +784,20 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             #     sign = -1
             # dr = sign * self.uclidian_distance(cur_agent_pos,extra_pos) - abs(self.spawn_waypoint.lane_width*(self.extra_dl_list[x]))
             dr = self.get_dr(extra,x)
+            # print(dr)
             if dr == False:
                 return None
-            # print(dr)
-
             player_vel = (self.player.get_velocity().x** 2 + self.player.get_velocity().y** 2 + self.player.get_velocity().z** 2) ** 0.5
             dv =player_vel - (extra_vel.x ** 2 + extra_vel.y ** 2 + extra_vel.z ** 2) ** 0.5
             length = 2 * extra.bounding_box.extent.x # length of extra vehicle
 
-            state_dyn = torch.tensor([dr / self.ROI_length, dv / 10.0, length / 10.0, self.extra_dl_list[x]])
-            # print(state_dyn[0])
-            state.append(state_dyn)
+
             # da = ((extra_acel.x - self.player.get_acceleration().x) ** 2 + (
             #         extra_acel.y - self.player.get_acceleration().y) ** 2 +
             #       (extra_acel.z - self.player.get_acceleration().z) ** 2) ** 0.5
-
+            state_dyn = torch.tensor([dr/self.ROI_length, dv/10.0 , length/10.0, self.extra_dl_list[x]])
+            # print(state_dyn[0])
+            state.append(state_dyn)
 
             # state.append(dr)
             # state.append(dv)
@@ -798,25 +805,34 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             # state.append(self.extra_dl_list[x])
 
 
-        if self.can_lane_change == True:
-            # print("finished lane change", self.pre_decision)
-            if self.pre_decision == 1.0:
-                # print("finish right")
-                self.ego_Lane = math.ceil(self.ego_Lane) / 1.0
-            elif self.pre_decision == -1.0:
-                # print("finish left")
-                self.ego_Lane = math.floor(self.ego_Lane) / 1.0
-
-        self.current_ego_lane = self.ego_Lane
+        # if self.can_lane_change == True:
+        #     # print("finished lane change", self.pre_decision)
+        #     if self.pre_decision == 1.0:
+        #         # print("finish right")
+        #         self.ego_Lane = math.ceil(self.ego_Lane) / 1.0
+        #     elif self.pre_decision == -1.0:
+        #         # print("finish left")
+        #         self.ego_Lane = math.floor(self.ego_Lane) / 1.0
+        #
+        # self.current_ego_lane = self.ego_Lane
 
         if decision == 1 :
-            self.ego_Lane += 0.5
-            self.pre_decision = 1.0
+            self.ego_Lane += 1
+            self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = False
-        elif decision ==-1:
-            self.ego_Lane += -0.5
-            self.pre_decision = -1.0
+            # print("-----at get next state-------")
+            # print("pre:", self.pre_can_lane_change)
+            # print("now:", self.can_lane_change)
+            # print("------------")
+
+        elif decision == -1:
+            self.ego_Lane += -1
+            self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = False
+            # print("-----at get next state-------")
+            # print("pre:", self.pre_can_lane_change)
+            # print("now:", self.can_lane_change)
+            # print("------------")
         else:
             pass
 
@@ -829,8 +845,6 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             return None
         # else: ## for debug
         #     print("lane_valid_distance:", lane_valid_distance)
-
-
 
         x_static.append(torch.tensor([self.ego_Lane, self.controller.velocity / 100.0, lane_valid_distance / self.ROI_length]))
 
@@ -856,38 +870,54 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             return self.distance_memory
         else:
             while self.uclidian_distance(waypoint.transform.location, goal_point) >= 2 * step:
-
+                if len(waypoint.next(step))==0:
+                    return False
                 waypoint = waypoint.next(step)[0]
                 distance1 += step
             return distance1 + self.uclidian_distance(waypoint.transform.location, goal_point)
+
+    # def asdf(self,first_lane_waypoint):
+    #     if first_lane_waypoint is not None:
+    #         while first_lane_waypoint.lane_id != -1:  # get waypoint of forth's lane
+    #             #### for debug
+    #             # pre_last_lane_waypoint = last_lane_waypoint
+    #             # self.check = pre_last_lane_waypoint
+    #             #### for debug
+    #             first_lane_waypoint = first_lane_waypoint.get_left_lane()
+    #             if first_lane_waypoint is None:
+    #                 return False
+    #
+    #         # print("lane id : ", last_lane_waypoint.lane_id)
+    #     else:
+    #         print("getting first lane false2")
+    #         return False
+    #     print(first_lane_waypoint.transform.location)
+    #
+    #     return first_lane_waypoint
 
     def get_waypoint_of_first_lane(self,actor):
         first_lane_waypoint = self.map.get_waypoint(actor.get_transform().location,
                                                    lane_type=carla.LaneType.Driving)  # self.controller.waypoint
 
         if first_lane_waypoint is not None:
-            while abs(first_lane_waypoint.lane_id) != 1:  # get waypoint of forth's lane
+            while first_lane_waypoint.lane_id != -1:  # get waypoint of forth's lane
                 #### for debug
                 # pre_last_lane_waypoint = last_lane_waypoint
                 # self.check = pre_last_lane_waypoint
                 #### for debug
-                if first_lane_waypoint is None:
-                    print(self.map.get_waypoint(actor.get_transform().location,
-                                                   lane_type=carla.LaneType.Driving))
-                    return False
                 first_lane_waypoint = first_lane_waypoint.get_left_lane()
+                if first_lane_waypoint is None:
+                    return False
 
             # print("lane id : ", last_lane_waypoint.lane_id)
         else:
-            print("getting last lane false2")
+            print("getting first lane false2")
             return False
-        # self.world.debug.draw_string(last_lane_waypoint.transform.location,
-        #                                      'o', draw_shadow=True,
-        #                                      color=carla.Color(r=255, g=255, b=0), life_time=9999)
+
         return first_lane_waypoint
 
-    def get_waypoint_of_last_lane(self,waypoint):
-        last_lane_waypoint = waypoint
+    def get_waypoint_of_last_lane(self,actor):
+        last_lane_waypoint = self.map.get_waypoint(actor.get_transform().location, lane_type=carla.LaneType.Driving)  # self.controller.waypoint
         my_waypoint = last_lane_waypoint ## for debug
 
         if last_lane_waypoint is not None:
@@ -924,7 +954,53 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
     #     :return:
     #     """
     #     info[0][0]
-    def plot_state_action(self, info):
+
+    def search_leading(self, info):
+        extra_infos = info[0].reshape(-1,4)
+        leading_extra_info = None
+        for extra_info in extra_infos:
+            dr = extra_info[0]*self.ROI_length
+            dv = info[0][1]*10
+            if extra_info[3] == 0:
+                if dr <= self.controller.safe_distance:
+                    if leading_extra_info is None:
+                        leading_Extra_info = extra_info
+                    elif leading_extra_info[0]*self.ROI_length > dr:
+                        leading_extra_info = info
+
+        return leading_extra_info
+
+
+    def update_dv_v(self,new_input,leading_info,step):
+        """
+
+        :param new_input:
+        :param leading_info:1x4  -> dynamic_state
+        :param step:
+        :return:
+        """
+        if leading_info is None:
+            print("no leading info")
+            # 70 = desired velocity of controller
+            delta_dv = (70.0-new_input[1][1]*100)/2
+            if delta_dv <=0:
+                new_input[0][1::4] = new_input[0][1::4] + delta_dv / 10 #dv
+                new_input[1][1] = new_input[1][1] + delta_dv / 100 #v
+        else:
+            print("leading info exist")
+            dr = leading_info[0][0]*self.ROI_length
+            leading_dv = leading_info[0][1]*10
+            if dr >=30:
+                delta_dv =  leading_dv/int(dr-30+step)
+                new_input[0][1::4] = new_input[0][1::4]-delta_dv/10
+                new_input[1][1] = new_input[1][1]-delta_dv/100
+
+            else:
+                new_input[1][1] = 0
+
+        return new_input
+
+    def plot_state_action(self,info):
         """
         :param info:[state, x_static]
             state.append(torch.tensor([dr/self.ROI_length, dv/10.0 , length/10.0, self.extra_dl_list[x]]))
@@ -932,44 +1008,38 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
         :return:
         """
         data_list = []
-        distance = 50
+        step = 1
         new_input = info
-        for lane_num in range(1, 5):
+        for lane_num in range(1,5):
             lane_gap = info[1][0] - lane_num
-            new_input[1][0] = lane_num
-            new_input[0][3::4] = info[0][3::4] + lane_gap
-            for x in range(0, distance):
-                new_input[0][0::4] = info[0][0::4] - x / self.ROI_length
-                new_input[1][2] = info[1][2] - x / self.ROI_length
+            new_input[1][0] = lane_num # static - l
+            new_input[0][3::4] = info[0][3::4] + lane_gap # dl
+            for x in range(0, 200,step):
+                new_input[0][0::4] = info[0][0::4] - x / self.ROI_length # dr
+                new_input[1][2] = info[1][2] - x / self.ROI_length       #static - valid
+                leading_info = self.search_leading(new_input)
+                new_input =  self.update_dv_v(new_input,leading_info,step)
+
                 state = new_input[0].type(torch.FloatTensor).cuda()
                 x_static = new_input[1].type(torch.FloatTensor).cuda()
-                self.agent.model(state, x_static).detach()
-                data_list.append(self.agent.model.val)
+                max_q= self.agent.model(state, x_static).detach().max()
+                data_list.append(max_q.item())
                 # data_list.append(self.agent.model(state,x_static).detach()[0])
         data_list = tuple(data_list)
         data_list = torch.cat(data_list).tolist()
-        data_list = data_list[::-1]
-        # data_list = data_list[-1::]
 
         data = np.reshape(data_list, (4, -1))
-
-        ay = [1, 2, 3, 4]
+        ay = [1,2,3,4]
         # ax = list(np.linspace(-200,200,10))
 
-        plot = sns.heatmap(data, yticklabels=ay)
+        plot = sns.heatmap(data, xticklabels=ay)
         plt.show()
 
-
-
-    def search_distance_valid(self,Waypoint=None):
+    def search_distance_valid(self):
         # index= 4-self.ego_Lane
         # print("index :", index)
 
-        if Waypoint is None:
-            waypoint = self.map.get_waypoint(self.player.get_transform().location, lane_type=carla.LaneType.Driving)
-        else:
-            waypoint = Waypoint
-        last_lane_waypoint = self.get_waypoint_of_last_lane(waypoint)
+        last_lane_waypoint = self.get_waypoint_of_last_lane(self.player)
         if last_lane_waypoint == False:
             return None
 
@@ -992,6 +1062,8 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
         if self.index % 2 == 0:
             distance = self.get_distance_from_waypoint_to_goal_point(last_lane_waypoint,
                                                                      self.lane_change_point[self.index])
+            if distance == False:
+                return None
             return distance
         else:
             self.distance_memory = None
@@ -1022,9 +1094,7 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             #                                      self.lane_finished_point[self.section].y) ** 2 + (
             #                             forth_lane_waypoint.next(i)[0].transform.location.z -
             #                             self.lane_finished_point[self.section].z) ** 2) ** 0.5
-            #         self.world.debug.draw_string(forth_lane_waypoint.next(i)[0].transform.location,
-            #                                      'o', draw_shadow=True,
-            #                                      color=carla.Color(r=255, g=255, b=0), life_time=9999)
+
             #         if pre_distance <= distance:
             #             print("pre_distance <= distance error")
             #             break
@@ -1051,9 +1121,7 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
     #     self.safe_lane_change_distance = int(self.controller.velocity/3.0+10.0)
     #     result = True
     #
-    #     self.world.debug.draw_string(self.spawn_waypoint.next(self.safe_lane_change_distance)[0].transform.location, 'o',
-    #                                  draw_shadow=True, color=carla.Color(r=255, g=0, b=0),
-    #                                  life_time=-1)
+
     #
     #     if decision ==0:
     #         # print("tried strait in safety check")
@@ -1077,12 +1145,19 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
     #                 return False
     #     return True
 
-    def loose_safety_check(self,decision,safe_lane_change_again_time = 3):
-        condition1 = (time.time() - self.lane_change_time) >= safe_lane_change_again_time
-        condition2 = (self.controller.is_lane_changing == True and self.controller.ld < self.controller.player_length + self.controller.waypoint.lane_width)
-        if condition1 or condition2:
+    def loose_safety_check(self,decision,safe_lane_change_again_time = 2.5):
+        # min time interval for lane change
+        condition1 = (time.time()-self.lane_change_time) >= safe_lane_change_again_time
+        # min distance from ego to lane change waypoint
+        # condition2 = (self.controller.is_lane_changing == True and self.controller.ld < self.controller.player_length+self.controller.waypoint.lane_width)
+
+        if condition1:
+            self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = True
+
+
         else:
+            self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = False
 
         if decision != 0:
@@ -1094,19 +1169,50 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
         else:
             return 0
 
-
-
-    def safety_check(self,decision, safe_lane_change_again_time=3):
+    def safety_check(self,decision,x_static, safe_lane_change_again_time=2.5):
         action = decision ############### if this line deleted, not alert error properly
+        # a=(time.time() - self.lane_change_time)
 
+        # min time interval for lane change
         condition1 = (time.time() - self.lane_change_time) >= safe_lane_change_again_time
-        condition2 = (self.controller.is_lane_changing == True and self.controller.ld < self.controller.player_length + self.controller.waypoint.lane_width)
-        if condition1 or condition2:
+        # min distance from ego to lane change waypoint
+
+        # if self.controller.is_fin_to_lane_change:
+        #     self.arrive_lane_chagne_change_point = True
+        # if self.controller.is_start_to_lane_change:
+        #     self.arrive_lane_chagne_change_point = False
+        # print(condition1, self.arrive_lane_chagne_change_point)
+
+        if condition1:# or self.arrive_lane_chagne_change_point:
+            self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = True
+
+            # print("------------")
+            # print("pre:", self.pre_can_lane_change)
+            # print("now:", self.can_lane_change)
+            # print("------------")
+
+
         else:
+            self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = False
 
+            # print("------------")
+            # print(decision)
+            # print("pre:", self.pre_can_lane_change)
+            # print("now:", self.can_lane_change)
+            # print("------------")
+
             # print("finished lane change", self.pre_decision)
+        # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
+        #     self.decision_changed = True
+        #
+        #     if self.can_lane_change:
+        #         print("hi1")
+        #         return  -1
+        #     else:
+        #         print("hi2")
+        #         return 0
 
         if decision !=0:
             if self.can_lane_change == False: # dont change frequently
@@ -1135,30 +1241,42 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                 # print("remained_action_list:",remained_action_list)
                 action =  int(self.agent.q_value[0][1:3].argmax().item())
 
-            # if action !=0 and self.ego_Lane %1 !=0:
-            #     self.check +=1
-                # print("here")
+
 
             if action != 0:# and self.can_lane_change(action,state):
                 self.lane_change_time = time.time()
+                # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
+                #     self.decision_changed = True
+                #     print("hi1")
+                #     action = -1
                 return action
             else:
+                # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
+                #     self.decision_changed = True
+                #     print("hi2")
+                #
+                #     self.lane_change_time = time.time()
+                #     return -1
+
                 return 0
         else:
+            # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
+            #     self.decision_changed = True
+            #     print("hi3")
+            #
+            #     self.lane_change_time = time.time()
+            #     return -1
+
             return 0
 
-    def get_max_lane(self,invalid_distances,pos = None):
+    def get_max_lane(self,invalid_distances):
         """
         :param invalid_distances: int type list
         :return: thsi function change the variable, self.section and self.max_Lane_num
         condition : It returns a not properly computed value if a 'U' curve lane exists
                     in this case, it needs a vortual point
         """
-
-        if pos is None:
-            agent_cur_pos = self.player.get_transform().location
-        else:
-            agent_cur_pos = pos.transform.location
+        agent_cur_pos = self.player.get_transform().location
         if self.section < len(invalid_distances):
 
             self.lane_distance_between_start = self.uclidian_distance(agent_cur_pos,self.lane_start_point[self.section])
@@ -1170,8 +1288,7 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                     invalid_distances[self.section]:
 
                 self.max_Lane_num = 3
-                # world.debug.draw_string(self.player.get_transform().location, 'o', draw_shadow = True,
-                #                                 color = carla.Color(r=255, g=255, b=0), life_time = 999)
+
 
             elif max(invalid_distances[self.section], self.lane_distance_between_start, self.lane_distance_between_end) == \
                     self.lane_distance_between_start and self.max_Lane_num == 3:
@@ -1196,8 +1313,7 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                 waypoint = tmp[1]
             else:
                 waypoint = tmp[0]
-            # self.world.debug.draw_string(waypoint.transform.location, 'o', draw_shadow=True, color=carla.Color(r=0, g=0, b=255),
-            #                         life_time=999)
+
 
 
         for i in range(1,300):
@@ -1206,8 +1322,6 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                 waypoint = tmp[1]
             else:
                 waypoint = tmp[0]
-            # self.world.debug.draw_string(waypoint.transform.location, 'o', draw_shadow=True, color=carla.Color(r=0, g=0, b=255),
-            #                         life_time=999)
 
 
     def main_test(self):
@@ -1229,8 +1343,6 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             self.lane_change_point.append(self.lane_start_point[i])
             self.lane_change_point.append(self.lane_finished_point[i])
 
-        # for x in self.lane_change_point:
-        #     self.world.debug.draw_string(x, 'o', draw_shadow=True, color=carla.Color(r=0, g=255, b=0), life_time=9999)
 
         lane_distance_between_points = []
         for i in range(len(self.lane_finished_point)):
@@ -1240,9 +1352,6 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             #         self.lane_start_point[i].y - self.lane_finished_point[i].y) ** 2 + (
             #          self.lane_start_point[i].z - self.lane_finished_point[i].z) ** 2) ** 0.5
 
-        # virtual_point = carla.Location(x=-425.112549, y=405.182892, z=0.000000)
-        # world.debug.draw_string(virtual_point, 'o', draw_shadow=True, color=carla.Color(r=0, g=0, b=255),
-        #                         life_time=999)
 
         # for i in range(1,9000):
         #     tmp = self.spawn_waypoint.next(0.1)[0].get_right_lane().next(i)
@@ -1251,16 +1360,16 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             # else:
             #     waypoint = tmp[0]
             # waypoint = tmp[0]
-            # self.world.debug.draw_string(waypoint.transform.location, 'o', draw_shadow=True, color=carla.Color(r=0, g=0, b=255),
-            #                         life_time=999)
 
+        pre_decision = None
         while True:
             # if time.time()-restart_time > 10:
             #     print("restart")
             #     self.restart()
 
 
-
+            #     print(self.search_distance_valid())
+            # print(self.controller.waypoint)
 
             for num, extra in enumerate(self.extra_list):
                 self.get_dr(extra,num)
@@ -1268,9 +1377,9 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             if Keyboardcontrol.parse_events(client, self, clock):
                 return
 
-            # self.spectator.set_transform(
-            #     carla.Transform(self.player.get_transform().location + carla.Location(z=100),
-            #                     carla.Rotation(pitch=-90)))
+            self.spectator.set_transform(
+                carla.Transform(self.player.get_transform().location + carla.Location(z=100),
+                                carla.Rotation(pitch=-90)))
             # self.camera_rgb.render(display)
             # self.hud.render(display)
             # pygame.display.flip()
@@ -1280,6 +1389,7 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
 
             ## Get max lane ##
             # print("start get lane")
+
             self.get_max_lane(lane_distance_between_points)
             d = self.search_distance_valid()
 
@@ -1287,6 +1397,9 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
 
             ## finished get max lane ##
             # print("finished get lane")
+
+            # self.search_distance_valid()
+            # print("distance :" ,,"max_lane_num : ", self.max_Lane_num)
 
             # if self.max_Lane_num==3:
                 # self.world.debug.draw_string(self.player.get_transform().location,
@@ -1297,33 +1410,32 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
             #     for extra in self.extra_list:
             #         extra.enable_constant_velocity(extra.get_transform().get_right_vector() * 0.0)
 
-            # if time.time()-self.lane_change_time >10:
-            #     self.lane_change_time = time.time()
-                # if pre_decision is None:
-                    # self.decision = -1
-                    # self.decision = self.safety_check(self.decision)
-            #
-                    # self.ego_Lane-=1
-                    # print("after decision: ", self.decision, "after lane", self.ego_Lane)
+            if time.time()-self.lane_change_time > 10:
+                self.lane_change_time = time.time()
+                if pre_decision is None:
+                    self.decision = -1
+                    # self.decision = self.loose_safety_check(self.decision)
+                    self.ego_Lane -= 1
+                    print("after decision: ", self.decision, "after lane", self.ego_Lane)
+                    pre_decision = -1
 
-                    # pre_decision = -1
-            #
-            #
-            #     elif pre_decision ==1:
-            #         pre_decision = -1
-            #         self.ego_Lane+=-1
-            #         self.decision = -1
-            #
-            #     elif pre_decision ==-1:
-            #         self.decision = 1
-            #         self.ego_Lane+=1
-            #         pre_decision =1
-            #
-            # else:
-            #     self.decision = 0
-            # self.decision= 0
+                elif pre_decision == 1:
+                    # self.decision = self.loose_safety_check(self.decision)
+                    pre_decision = -1
+                    self.ego_Lane += -1
+                    self.decision = -1
+
+                elif pre_decision == -1:
+                    # self.decision = self.loose_safety_check(self.decision)
+                    self.decision = 1
+                    self.ego_Lane += 1
+                    pre_decision = 1
+
+            else:
+                self.decision = 0
+
             self.controller.apply_control(self.decision)
-            self.decision=0
+
 
             # self.world.wait_for_tick(10.0)
             clock.tick(40)
@@ -1332,14 +1444,14 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
 
     def main(self):
 
-        PATH = "/home/a/per_deepset-Q_ddqn/"
+        PATH = "/home/a/version_2_per_deepset/"
         print(torch.cuda.get_device_name())
         clock = pygame.time.Clock()
         Keyboardcontrol = KeyboardControl(self, False)
         # display = pygame.display.set_mode(
         #     (self.width, self.height),
         #     pygame.HWSURFACE | pygame.DOUBLEBUF)
-        self.agent = decision_driving_Agent(self.input_size, self.output_size, True, 1000, self.extra_num, self.controller)
+        self.agent = decision_driving_Agent(self.input_size,self.output_size,True,1000,self.extra_num,self.controller)
 
         # # 모델의 state_dict 출력
         # print("Model's state_dict:")
@@ -1356,6 +1468,8 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
         self.visualize_virtual_invalid_forth_lane()
         self.lane_change_point = []
 
+        previous_reward = None
+
         for i in range(len(self.lane_start_point)):
             self.lane_change_point.append(self.lane_start_point[i])
             self.lane_change_point.append(self.lane_finished_point[i])
@@ -1368,27 +1482,28 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
 
 
         epoch = 0
-        load_dir = PATH+'trained_info2792.pt'
+        device = torch.device('cuda')
+
+        load_dir = PATH+'trained_info4225.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
             checkpoint = torch.load(load_dir)
-            device = torch.device('cuda')
             self.agent.model.load_state_dict(checkpoint['model_state_dict'])
             self.agent.model.to(device)
             self.agent.target_model.load_state_dict((checkpoint['target_model_dict']))
             self.agent.target_model.to(device)
             self.agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.offline_learning_epoch = checkpoint['offline_learning_epoch']
+            self.agent.buffer.buffer = checkpoint['data']
             # self.agent.buffer.buffer = checkpoint['memorybuffer']
             epoch = checkpoint['epoch']
             self.agent.epsilon = checkpoint['epsilon']
 
         # print("h")
+        if self.mission_mode == True:
+            self.agent.is_training = False
 
-        # self.agent.is_training = False
         print("epoch : ",epoch)
-
         # print(self.agent.buffer.size)
 
             # self.agent.buffer.load_state_dict(self.save_dir['memorybuffer'])
@@ -1402,12 +1517,12 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
         #     print(i.id)
         # try:
 
-        n_iters = 200000
 
-        while epoch <=n_iters:
+        while True:
             simulation_step = 0
             # print("start epoch!")
             self.start_epoch = True
+            self.iter +=1
 
             [state, x_static] = self.get_next_state()  # 초기 상태 s0 초기화
             if state is None:
@@ -1427,7 +1542,7 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                 # tmp = self.map.get_waypoint(self.player.get_location(), lane_type=carla.LaneType.Driving)
                 # tmp_rotation = tmp.transform.rotation
                 # tmp2=self.get_waypoint_of_last_lane(self.player)
-                self.spectator.set_transform(carla.Transform(self.player.get_transform().location + carla.Location(z=150),
+                self.spectator.set_transform(carla.Transform(self.player.get_transform().location + carla.Location(z=130),
                                     carla.Rotation(pitch = -90)))
 
                 ## Get max lane ##
@@ -1437,15 +1552,12 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
 
                 ## finished get max lane ##
                 ##visualize when, max lane ==3 ##
-                # if self.max_Lane_num == 3:
-                #     self.world.debug.draw_string(self.spawn_waypoint.transform.location,
-                #                                  'o', draw_shadow=True,
-                #                                  color=carla.Color(r=255, g=255, b=255), life_time=9999)
-                # [self.extra_list, self.extra_dl_list] = self.agent.search_extra_in_ROI(self.extra_list,self.player,self.extra_dl_list)
+
+                # [self.extra_list, self.1] = self.agent.search_extra_in_ROI(self.extra_list,self.player,self.extra_dl_list)
 
                 ## finished to visualize ##
-
-                if self.agent.is_training:
+                # self.agent.is_training = False
+                if self.agent.is_training :
                     ##dqn 과정##
                     # 가중치 초기화 (pytroch 내부)
                     # 입실론-그리디 행동 탐색 (act function)
@@ -1455,16 +1567,8 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                     # Loss 계산                  ㅡ
                     # 가중치 업데이트              ㅡ
 
-                    if epoch % 1 == 0:
-                        # [w, b] = self.agent.model.parameters()  # unpack parameters
-                        self.save_dir = torch.save({
-                            'epoch': epoch,
-                            'offline_learning_epoch': self.offline_learning_epoch,
-                            'model_state_dict': self.agent.model.state_dict(),
-                            'target_model_dict': self.agent.target_model.state_dict(),
-                            'optimizer_state_dict': self.agent.optimizer.state_dict(),
-                            # 'memorybuffer': self.agent.buffer.buffer,
-                            'epsilon': self.agent.epsilon}, PATH+"trained_info"+str(epoch)+".pt")#+str(epoch)+
+
+
                     # print(clock.get_fps())
 
                     # if time.time() - self.simul_time > 7 and time.time() - self.simul_time < 8 and clock.get_fps() < 15:
@@ -1482,12 +1586,14 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
 
                     if self.can_lane_change == False: #self.controller.is_lane_changing == True and self.controller.is_start_to_lane_change == False
                         self.decision = 0
+                        # print(0)
                     else:
                         self.decision = self.agent.act(state, x_static)
 
                     before_safety_decision = self.decision
+
                     if self.safety_mode == True:
-                        self.decision = self.safety_check(self.decision)
+                        self.decision = self.safety_check(self.decision,x_static,2.5)
                     else:
                         self.decision = self.loose_safety_check(self.decision)
 
@@ -1499,22 +1605,14 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                         print("controller error")
                         self.restart()
                         self.start_epoch = False
-                    # print("extra_controller 개수 :", len(self.extra_controller_list))
                     # for i in range(len(self.extra_controller_list)):
                     #     self.extra_controller_list[i].apply_control()
 
                     # if self.decision == -1 and self.ego_Lane == 1:
-                    #     print("decision :", tmp, "ego_lane : ", tmp2)
-
-                    # print("after")
 
                     clock.tick(40)
 
                     tmp = self.step(self.decision)
-#self.pre_ego_lane != self.ego_Lane
-                    # if self.decision !=0:
-                        # print("before decision:", self.decision, "before lane", self.pre_ego_lane)
-                        # print("after decision: ", self.decision, "after lane", self.ego_Lane)
 
                     self.pre_ego_lane = self.ego_Lane
 
@@ -1526,47 +1624,62 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                         break
 
                     else:
-                      [__, _, decision, reward, next_state, next_x_static, done] =  tmp
+                        [__, _, decision, reward, next_state, next_x_static, done] =  tmp
+                        # if self.check == 1:
+                        #     sample = [state, x_static, self.decision, reward, next_state, next_x_static, done]
+                        #     # self.plot_state_action(sample)
+                        #     self.restart()
+                        #     self.start_epoch = False
 
                     if done:
-                        # sample = [state, x_static, decision, reward, None, None, done]
                         # x_static[0] = self.current_ego_lane
-                        # print("decision: ", decision, "ego_lane:", self.current_ego_lane)
+                        # info = [state, x_static]
+                        # if no collision no data stored in buffer
 
-                        if len(self.agent.buffer.size()) >=self.agent.batch_size:#self.agent.buffer.buffer_limit:
-                           self.agent.buffer.plot_buffer()
 
-                        info = [state, x_static]
-                        self.plot_state_action(info)
-
-                        # if x_static[0]%1==0:
-                        #     print("h")
-                        # if decision !=0 and (next_x_static[0]%1 ==0 or x_static[0]%1 !=0):
-                        #     print("h")
-                        # self.agent.buffer.append(sample)
-                        # print(self.extra_dl_list)
-                        # print("lane_valid_distance :",x_static[2] * self.ROI_length,"reward:", reward, "decision:", decision, "before decision", before_safety_decision)
-                        # self.agent.memorize_td_error(0)
-
-                        if self.decision_changed:
-                            # if x_static[0] <=1.5:+
-                            #     print("lane 1 :", before_safety_decision)
-                            # elif x_static[0]>3.5:
-                            #     print("lane 4 :", before_safety_decision)
-
-                            sample = [state, x_static, before_safety_decision, -7, None, None, done]
+                        if len(self.collision_sensor.history) != 0:
+                            assert reward is not None, "reward= none"
+                            sample = [decision_state, decision_x_static, self.pre_decision, reward, None, None,
+                                      done]
+                            # print("collision:", decision_x_static[0], "decision:", self.pre_decision, "reward",
+                            #       reward)
+                            # print(sample)
 
                             self.agent.buffer.append(sample)
                             self.agent.memorize_td_error(0)
 
+                        elif self.is_lane_out:
+                            sample = [state, x_static, self.decision, reward, None, None,
+                                      done]
+                            self.agent.buffer.append(sample)
+                            self.agent.memorize_td_error(0)
+
+                        if self.decision_changed:
+                            # if x_static[0] <=1.5:+
+                            #     print("lane 1 :", before_safety_decision)
+                            # elif x_static[lane_change_fin, straight:0]>3.5:
+                            #     print("lane 4 :", before_safety_decision)
+
+                            sample = [state, x_static, before_safety_decision, -10, None, None, done]
+                            # print(sample)
+
+                            self.agent.buffer.append(sample)
+                            self.agent.memorize_td_error(0)
+                        # else:
+                        #
+                        #     self.plot_state_action(sample)
+
 
 
                         print("buffer size : ", len(self.agent.buffer.size()))
-                        n=100.0
+                        n=150.0
+
+
+                        self.agent.buffer.plot_buffer(epoch)
 
                         print("epsilon :", self.agent.epsilon)
                         print("learning_rate:",self.agent.learning_rate)
-                        print("epoch : ", epoch, "누적 보상 : ", self.accumulated_reward)
+                        # print("epoch : ", epoch, "누적 보상 : ", self.accumulated_reward)
 
                         # if epoch == 50:
                         #     self.agent.learning_rate = 0.0005
@@ -1574,106 +1687,243 @@ carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.R
                         #     self.agent.learning_rate/= 0.0001
                         # elif epoch == 500:
                         #     self.agent.learning_rate/= 0.00005
+                        self.agent.update_td_error_memory(epoch)
 
 
                         #offline learning
-                        if len(self.agent.buffer.size()) > self.agent.batch_size*n:
+                        if len(self.agent.buffer.size()) > 2000:#self.agent.batch_size * n:
+
                             print("start learning")
-
-                            self.agent.update_td_error_memory()
-                            self.agent.update_epsilon(epoch)
-
                             for i in range(int(n)):
                                 self.agent.ddqn_learning()
-                                # self.offline_learning_epoch +=1
                                 self.acummulated_loss += self.agent.loss
-
+                            self.scenario = "validation"
+                            self.agent.is_training = False
                             writer.add_scalar('Loss', self.acummulated_loss / n, epoch)
-                            writer.add_scalar('누적 보상 ', self.accumulated_reward, epoch)
-
-                            epoch+=1
+                            writer.add_scalar('랜덤 시나리오 누적보상', self.accumulated_reward , epoch)
+                            self.agent.update_epsilon()
 
 
                         if epoch % 10 == 0:
                             self.agent.target_model.load_state_dict(self.agent.model.state_dict())
 
-
                         client.set_timeout(10)
+                        if epoch % 1 == 0:
+                            # [w, b] = self.agent.model.parameters()  # unpack parameters
+                            self.save_dir = torch.save({
+                                'epoch': epoch,
+                                'model_state_dict': self.agent.model.state_dict(),
+                                'target_model_dict': self.agent.target_model.state_dict(),
+                                'optimizer_state_dict': self.agent.optimizer.state_dict(),
+                                'data': self.agent.buffer.buffer,
+                                'left_col': self.left_col_num,
+                                'right_col':self.right_col_num,
+                                'exit_col':self.exit_lane_col_num,
+                                'vehicle_col': self.collision_num,
+                                'clear_num': self.mission_clear_num,
+                                'iter': self.iter,
+                                # 'memorybuffer': self.agent.buffer.buffer,
+                                'epsilon': self.agent.epsilon},
+                                PATH + "mission_info" + str(epoch) + ".pt")  # +str(epoch)+
+
                         self.restart()
                         self.start_epoch = False
                         # self.camera_rgb.toggle_camera()
                         # print("toggle_camera finished")
 
                     else:
-                        sample = [state, x_static, self.decision, reward, next_state, next_x_static, done]
-                        # sample = [state, x_static, pre_decision, reward, next_state, next_x_static, done]
-                        x_static[0] = self.current_ego_lane
 
-                        # print("decision: ", decision, "ego_lane:", self.current_ego_lane)
-                        # if x_static[0] % 1 == 0 and self.decision !=0:
-                        #     print("h")
-                        # if decision !=0 and (next_x_static[0]%1 ==0 or x_static[0]%1 !=0):
-                        #     print("h")
-                        self.agent.buffer.append(sample)
-                        # print(self.extra_dl_list)
+                        if self.controller.is_lane_changing == False:
+                            if self.controller.is_fin_to_lane_change:
+                                self.append_lane_change_sample = True
 
-                        # print("dr:",state[0]*self.ROI_length,"dl:",self.extra_dl_list,"ego_lane:", x_static[0],"lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
+                                # print("condition satisfied decision :", self.decision) #if not zero -> bug
 
-                        self.agent.memorize_td_error(0)
+                                # 예외처리 : 시뮬레이션 시작하자 말자 차선변경 하는 경우
+
+                                # lane change finished , append sample
+                                # print("lane change complete")
+                                # self.check += 1
+                                # print(self.can_lane_change) # is_fin_to_lane_change ->next step -> can_lane_change == Ture
+
+
+
+                            if self.can_lane_change and self.append_lane_change_sample:
+                                #finished to lane change##
+                                # self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
+                                #                              color=carla.Color(r=0, g=255, b=255), life_time=99)
+                                self.append_lane_change_sample = False
+                                sample = [decision_state, decision_x_static, self.pre_decision, decision_reward,
+                                          next_state, next_x_static, done]
+                                # print(sample)
+                                # print("1: lane_change_fin,save when decision time:  ",self.pre_decision,decision_x_static[0].item(), next_x_static[0].item(),decision_state[3::4],next_state[3::4])
+
+                                assert decision_reward is not None, "reward= none"
+                                self.agent.buffer.append(sample)
+                                self.agent.memorize_td_error(0)
+
+                            # print("fin to lane change and store lane change sample, decision =", decision)
+
+                            if self.decision == 0 and self.can_lane_change:
+                                # print("store straight sample")
+                                # self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
+                                #                              color=carla.Color(r=0, g=0, b=255), life_time=999)
+                                sample = [state, x_static, self.decision, reward, next_state, next_x_static, done]
+                                # assert self.decision == 0, 'decision ix_static : s not 0'
+                                assert reward is not None, "reward= none"
+                                # print(sample)
+
+                                self.agent.buffer.append(sample)
+                                # print(self.can_lane_change)
+                                self.agent.memorize_td_error(0)
+                                # self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
+                                #                              color=carla.Color(r=255, g=255, b=255), life_time=99)
+
+                                # print("2:  ",x_static)
+                                # print("straight:  ", x_static[0], self.decision, next_x_static[0])
+
+
+
+                        else: #is_lane_changing = True
+                            if self.decision != 0:
+                                # print("incomplete lane change and restart lane change")
+                                # self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
+                                #                              color=carla.Color(r=0, g=255, b=0), life_time=99)
+                                if previous_reward is None:
+                                    previous_reward = reward
+                                    #previous_reward -> negative reward ..?
+                                sample = [decision_state, decision_x_static, self.pre_decision, previous_reward-0.01, next_state, next_x_static, done]
+
+                                assert previous_reward is not None, "reward= none"
+
+                                # print("3:  ",x_static)
+
+                                # print("3:  ",decision_x_static[0], self.pre_decision, x_static[0])
+                                # print("3, x_static : ", x_static[0].item())
+
+                                # print(sample)
+
+                                self.agent.buffer.append(sample)
+                                self.agent.memorize_td_error(0)
+                            # else:
+                            #     ## lane changing
+                            #     self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
+                            #                                  color=carla.Color(r=10, g=10, b=105), life_time=99)
+
+
+                            # print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
+
+
                         if self.decision_changed:
                             # if x_static[0] <=1.5:
                             #     print("lane 1 :", before_safety_decision)
                             # elif x_static[0]>3.5:
                             #     print("lane 4 :", before_safety_decision)
-                            sample = [state, x_static, before_safety_decision, -7, None, None, done]
+
+                            sample = [state, x_static, before_safety_decision, -10, None, None, done]
+
+                            # print("4:  ", x_static)
+                            # print(sample)
+
                             self.agent.buffer.append(sample)
                             self.agent.memorize_td_error(0)
+                            # print(self.decision, "can_lane_change:",self.can_lane_change)
 
-
-
-                        #just generate space to put error
+                        if self.decision !=0:
+                            # need to plot string
+                            # print("decision static changed")
+                            decision_state = state
+                            decision_x_static = x_static
+                            decision_reward = reward
+                            self.pre_decision = self.decision
 
                         state = next_state
                         x_static = next_x_static
 
+                else: #not training
 
-                else: #not traning
 
-
-                    self.decision = self.agent.act(state, x_static)
                     # print(self.decision)
-                    self.decision = self.safety_check(self.decision)
+                    if self.can_lane_change == False: #self.controller.is_lane_changing == True and self.controller.is_start_to_lane_change == False
+                        self.decision = 0
+                        # print(0)
+                    else:
+                        self.decision = self.agent.act(state, x_static)
+
+                    self.decision = self.loose_safety_check(self.decision)
 
                     is_error = self.controller.apply_control(self.decision)
                     if is_error:
+                        # print("validation fin")
+                        if self.mission_mode == False:
+                            self.scenario = "random"
+                            self.agent.is_training = True
+                        writer.add_scalar('누적 보상 ', self.accumulated_reward, epoch)
+                        epoch += 1
                         self.restart()
                         self.start_epoch = False
 
-                    [__, _, decision, reward, next_state, next_static, done] = self.step(self.decision)
+                    tmp = self.step(self.decision)
+
+                    if tmp is None:
+                        print("get_state_error in step process")
+                        self.restart()
+                        self.start_epoch = False
+                        break
+
+                    else:
+                        [__, _, decision, reward, next_state, next_x_static, done] = tmp
+
+                    # if time.time() - self.simul_time >= 5:
+                    #     print("screenshot comeplete")
+                    #     pyautogui.screenshot('/home/a/Pictures/my_screenshot.png')
+                    #     sample = [state, x_static, self.decision, reward, next_state, next_static, done]
+                    #     f = open("/home/a/version_2_per_deepset/data/state_static.txt", 'w')
+                    #     data = "%d\n" % epoch
+                    #     f.write(data)
+                    #     step = 0
+                    #     for x in state:
+                    #         step+=1
+                    #         f.write("%f " % x)
+                    #         if step==4:
+                    #             step = 0
+                    #             f.write('\n')
+                    #     for x in x_static:
+                    #         f.write("%f " % x)
+                    #     f.write('\n')
+                    #
+                    #     f.close()
+                    #     # self.plot_state_action(sample)
+                    #     self.restart()
+                    #     self.start_epoch = False
+
+                    state = next_state
+                    x_static = next_x_static
 
                     if done:
-                        print("epoch : ", epoch, "누적 보상 : ", self.accumulated_reward)
-                        client.set_timeout(10)
-                        self.restart()
 
-        # finally:
-        #     print('\ndestroying %d vehicles' % len(self.extra_list))
-        #     # client.apply_batch([carla.command.DestroyActor(x) for x in self.extra_list])
-        #
-        #     print('destroying actors.')
-        #     # client.apply_batch([carla.command.DestroyActors(x.id) for x in self.actor_list])
-        #     # client.apply_batch([carla.command.DestroyActors(x.id) for x in self.extra_list])
-        #     for actor in self.actor_list:
-        #         # print("finally 에서 actor 제거 :", self.actor_list)
-        #         if actor.is_alive:
-        #             actor.destroy()
-        #     for extra in self.extra_list:
-        #         # print("finally 에서 actor 제거 :", self.extra_list)
-        #         if extra.is_alive:
-        #             extra.destroy()
-        #
-        #     # pygame.quit()
-        #     print('done.')
+                        print("epoch : ", epoch, "누적 보상 : ", self.accumulated_reward)
+                        writer.add_scalar('누적 보상 ', self.accumulated_reward, epoch)
+                        epoch += 1
+                        self.eplased_time = time.time() - self.simul_time
+
+                        f = open("/home/a/version_2_per_deepset/data/mission_history.txt", 'a')
+    #시나리오 반복 횟수, 미션 성공수    , 소요 시간,      평균 속도, 	차선 변경 횟수,	   left, 	    right,    exit colision   vehicle collision  퍙군속도 구하는데 들어간 iteration 수
+                        data_list = [self.iter, self.mission_clear_num, self.eplased_time,self.controller.vel_history,self.controller.lane_change_history,self.left_col_num, self.right_col_num, self.exit_lane_col_num, self.collision_num, self.controller.history_num]
+                        for data in data_list:
+                            input = "%f \t" % data
+                            f.write(input)
+                        f.write("\n")
+                        f.close()
+
+                        client.set_timeout(10)
+                        if self.mission_mode == False:
+                            self.scenario = "random"
+                            self.agent.is_training = True
+                        self.restart()
+                        self.start_epoch = False
+
+
 
 world = None
 actors=[]
@@ -1722,7 +1972,6 @@ if __name__ == '__main__':
                 if sensor.is_listening:
                     sensor.stop()
                 sensor.destroy()
-
         if len(actors) != 0:
             for x in actors:
                 try:
@@ -1731,3 +1980,4 @@ if __name__ == '__main__':
                     print("destroy error ")
 
         print('\nCancelled by user. Bye!')
+
