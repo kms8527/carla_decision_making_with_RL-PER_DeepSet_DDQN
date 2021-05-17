@@ -57,9 +57,9 @@ class CarlaEnv():
     font = pygame.font.init()
 
     def __init__(self,world):
-        # GPU_NUM = 1  # 원하는 GPU 번호 입력
-        # device = torch.device(f'cuda:{GPU_NUM}' if torch.cuda.is_available() else 'cpu')
-        # torch.cuda.set_device(device)  # change allocation of current GPU
+        GPU_NUM = 1  # 원하는 GPU 번호 입력
+        device = torch.device(f'cuda:{GPU_NUM}' if torch.cuda.is_available() else 'cpu')
+        torch.cuda.set_device(device)  # change allocation of current GPU
 
         self.safety_mode = True
         self.mission_mode = True
@@ -1169,7 +1169,7 @@ class CarlaEnv():
         else:
             return 0
 
-    def safety_check(self,decision,x_static, safe_lane_change_again_time=2.5):
+    def safety_check(self,decision, safe_lane_change_again_time=2.5):
         action = decision ############### if this line deleted, not alert error properly
         # a=(time.time() - self.lane_change_time)
 
@@ -1268,6 +1268,146 @@ class CarlaEnv():
             #     return -1
 
             return 0
+
+    def safety_check2(self,decision, safe_lane_change_again_time=2.5):
+        action = decision ############### if this line deleted, not alert error properly
+        # a=(time.time() - self.lane_change_time)
+
+        # min time interval for lane change
+        condition1 = (time.time() - self.lane_change_time) >= safe_lane_change_again_time
+        # min distance from ego to lane change waypoint
+
+        # if self.controller.is_fin_to_lane_change:
+        #     self.arrive_lane_chagne_change_point = True
+        # if self.controller.is_start_to_lane_change:
+        #     self.arrive_lane_chagne_change_point = False
+        # print(condition1, self.arrive_lane_chagne_change_point)
+
+        if condition1:# or self.arrive_lane_chagne_change_point:
+            self.pre_can_lane_change = self.can_lane_change
+            self.can_lane_change = True
+
+            # print("------------")
+            # print("pre:", self.pre_can_lane_change)
+            # print("now:", self.can_lane_change)
+            # print("------------")
+
+
+        else:
+            self.pre_can_lane_change = self.can_lane_change
+            self.can_lane_change = False
+
+            # print("------------")
+            # print(decision)
+            # print("pre:", self.pre_can_lane_change)
+            # print("now:", self.can_lane_change)
+            # print("------------")
+
+            # print("finished lane change", self.pre_decision)
+        # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
+        #     self.decision_changed = True
+        #
+        #     if self.can_lane_change:
+        #         print("hi1")
+        #         return  -1
+        #     else:
+        #         print("hi2")
+        #         return 0
+
+        if decision !=0:
+            if self.can_lane_change == False: # dont change frequently
+                return 0 #즉 직진
+            elif self.agent.selection_method == 'random' and decision == 1 and self.ego_Lane >= self.max_Lane_num-0.5: #dont leave max lane
+                # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
+                self.decision_changed = True
+                action = random.randrange(-1,1)
+
+            elif self.agent.selection_method == 'random' and decision == -1 and self.ego_Lane <=1.5: #dont leave min lane
+                # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
+                self.decision_changed = True
+                action = random.randrange(0, 2)
+
+            elif  self.agent.selection_method == 'max' and self.ego_Lane >= self.max_Lane_num-0.5 and decision == 1:
+                # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
+                self.decision_changed = True
+                remained_action_list = self.agent.q_value[0][0:2]
+                # print("remained_action_list:",remained_action_list)
+                action = int(remained_action_list.argmax().item())-1
+
+            elif self.agent.selection_method == 'max' and self.ego_Lane <= 1.5 and decision == -1:
+                # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
+                self.decision_changed = True
+                # remained_action_list =  self.agent.q_value[0][1:3]
+                # print("remained_action_list:",remained_action_list)
+                action =  int(self.agent.q_value[0][1:3].argmax().item())
+            elif self.agent.selection_method == 'max' and self.is_side_safe(decision) == False:
+                self.decision_changed = True
+                action = self.agent.q_value[0].sort()[1][1].item()
+                if self.is_side_safe(action) == False:
+                    action = self.agent.q_value[0].sort()[1][0].item()
+
+            elif self.agent.selection_method == 'random' and self.is_side_safe(decision) == False:
+                self.decision_changed = True
+                action = random.randrange(0, 3)
+                while self.is_side_safe(action) == False:
+                    action = random.randrange(0, 3)
+
+            if action != 0:# and self.can_lane_change(action,state):
+                self.lane_change_time = time.time()
+                # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
+                #     self.decision_changed = True
+                #     print("hi1")
+                #     action = -1
+                return action
+            else:
+                # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
+                #     self.decision_changed = True
+                #     print("hi2")
+                #
+                #     self.lane_change_time = time.time()
+                #     return -1
+
+                return 0
+        else:
+            # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
+            #     self.decision_changed = True
+            #     print("hi3")
+            #
+            #     self.lane_change_time = time.time()
+            #     return -1
+
+            return 0
+
+    def is_side_safe(self,decision):
+        for num in range(self.extra_num):
+
+            dv = 0
+            if self.extra_dl_list[num] == decision :
+                # return False
+                player_vel = (self.player.get_velocity().x ** 2 + self.player.get_velocity().y ** 2 + self.player.get_velocity().z ** 2) ** 0.5
+                extra_vel = self.extra_list[num].get_velocity()
+                dv = player_vel - (extra_vel.x ** 2 + extra_vel.y ** 2 + extra_vel.z ** 2) ** 0.5
+                if abs(self.vehicles_distance_memory[num]) <= self.controller.safe_distance/3 - dv:
+                    # if 20 - dv < 0 :
+
+                    if self.vehicles_distance_memory[num] > 0:
+                        self.world.debug.draw_string(self.extra_list[num].get_transform().location,
+                                                     'o', draw_shadow=True,
+                                                     color=carla.Color(r=255, g=0, b=0), life_time=0.1)
+                        return False
+                    else:
+                        if abs(self.vehicles_distance_memory[num]) <= self.controller.safe_distance / 4 - dv:
+                            self.world.debug.draw_string(self.extra_list[num].get_transform().location,
+                                                         'o', draw_shadow=True,
+                                                         color=carla.Color(r=255, g=0, b=0), life_time=0.1)
+            self.world.debug.draw_string(self.controller.my_location_waypoint.next(int(20-dv))[0].transform.location,
+                                         'o', draw_shadow=True,
+                                         color=carla.Color(r=255, g=255, b=255), life_time=-1)
+            self.world.debug.draw_string(self.controller.my_location_waypoint.previous( self.controller.safe_distance / 4 - dv)[0].transform.location,
+                                         'o', draw_shadow=True,
+                                         color=carla.Color(r=255, g=255, b=255), life_time=0.1)
+        return True
+
 
     def get_max_lane(self,invalid_distances):
         """
@@ -1371,14 +1511,15 @@ class CarlaEnv():
             #     print(self.search_distance_valid())
             # print(self.controller.waypoint)
 
-            for num, extra in enumerate(self.extra_list):
-                self.get_dr(extra,num)
-            # print(self.vehicles_distance_memory)
-            if Keyboardcontrol.parse_events(client, self, clock):
-                return
+            # for num, extra in enumerate(self.extra_list):
+            #     self.get_dr(extra,num)
 
+
+            # print(self.vehicles_distance_memory)
+            # if Keyboardcontrol.parse_events(client, self, clock):
+            #     return
             self.spectator.set_transform(
-                carla.Transform(self.player.get_transform().location + carla.Location(z=100),
+                carla.Transform(self.player.get_transform().location + carla.Location(z=200),
                                 carla.Rotation(pitch=-90)))
             # self.camera_rgb.render(display)
             # self.hud.render(display)
@@ -1415,28 +1556,32 @@ class CarlaEnv():
                 if pre_decision is None:
                     self.decision = -1
                     # self.decision = self.loose_safety_check(self.decision)
-                    self.ego_Lane -= 1
+                    # self.ego_Lane -= 1
                     print("after decision: ", self.decision, "after lane", self.ego_Lane)
                     pre_decision = -1
 
                 elif pre_decision == 1:
                     # self.decision = self.loose_safety_check(self.decision)
                     pre_decision = -1
-                    self.ego_Lane += -1
+                    # self.ego_Lane += -1
                     self.decision = -1
 
                 elif pre_decision == -1:
                     # self.decision = self.loose_safety_check(self.decision)
                     self.decision = 1
-                    self.ego_Lane += 1
+                    # self.ego_Lane += 1
                     pre_decision = 1
+
 
             else:
                 self.decision = 0
 
+
             self.controller.apply_control(self.decision)
 
-
+            self.step(self.decision)
+            self.is_side_safe(1)
+            self.is_side_safe(-1)
             # self.world.wait_for_tick(10.0)
             clock.tick(40)
 
@@ -1484,7 +1629,7 @@ class CarlaEnv():
         epoch = 0
         device = torch.device('cuda')
 
-        load_dir = PATH+'trained_info4225.pt'
+        load_dir = PATH+'trained_info4083.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
@@ -1593,7 +1738,7 @@ class CarlaEnv():
                     before_safety_decision = self.decision
 
                     if self.safety_mode == True:
-                        self.decision = self.safety_check(self.decision,x_static,2.5)
+                        self.decision = self.safety_check(self.decision)
                     else:
                         self.decision = self.loose_safety_check(self.decision)
 
@@ -1708,23 +1853,23 @@ class CarlaEnv():
                             self.agent.target_model.load_state_dict(self.agent.model.state_dict())
 
                         client.set_timeout(10)
-                        if epoch % 1 == 0:
-                            # [w, b] = self.agent.model.parameters()  # unpack parameters
-                            self.save_dir = torch.save({
-                                'epoch': epoch,
-                                'model_state_dict': self.agent.model.state_dict(),
-                                'target_model_dict': self.agent.target_model.state_dict(),
-                                'optimizer_state_dict': self.agent.optimizer.state_dict(),
-                                'data': self.agent.buffer.buffer,
-                                'left_col': self.left_col_num,
-                                'right_col':self.right_col_num,
-                                'exit_col':self.exit_lane_col_num,
-                                'vehicle_col': self.collision_num,
-                                'clear_num': self.mission_clear_num,
-                                'iter': self.iter,
-                                # 'memorybuffer': self.agent.buffer.buffer,
-                                'epsilon': self.agent.epsilon},
-                                PATH + "mission_info" + str(epoch) + ".pt")  # +str(epoch)+
+                        # if epoch % 1 == 0:
+                        #     # [w, b] = self.agent.model.parameters()  # unpack parameters
+                        #     self.save_dir = torch.save({
+                        #         'epoch': epoch,
+                        #         'model_state_dict': self.agent.model.state_dict(),
+                        #         'target_model_dict': self.agent.target_model.state_dict(),
+                        #         'optimizer_state_dict': self.agent.optimizer.state_dict(),
+                        #         'data': self.agent.buffer.buffer,
+                        #         'left_col': self.left_col_num,
+                        #         'right_col':self.right_col_num,
+                        #         'exit_col':self.exit_lane_col_num,
+                        #         'vehicle_col': self.collision_num,
+                        #         'clear_num': self.mission_clear_num,
+                        #         'iter': self.iter,
+                        #         # 'memorybuffer': self.agent.buffer.buffer,
+                        #         'epsilon': self.agent.epsilon},
+                        #         PATH + "mission_info" + str(epoch) + ".pt")  # +str(epoch)+
 
                         self.restart()
                         self.start_epoch = False
@@ -1849,8 +1994,10 @@ class CarlaEnv():
                         # print(0)
                     else:
                         self.decision = self.agent.act(state, x_static)
-
-                    self.decision = self.loose_safety_check(self.decision)
+                    if self.mission_mode == False:
+                        self.decision = self.loose_safety_check(self.decision)
+                    else:
+                        self.decision = self.safety_check2(self.decision)
 
                     is_error = self.controller.apply_control(self.decision)
                     if is_error:

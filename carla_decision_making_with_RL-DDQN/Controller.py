@@ -286,13 +286,58 @@ class Pure_puresuit_controller:
         # elif self.is_fin_to_lane_change:
         #     self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
         #                                  color=carla.Color(r=0, g=0, b=255), life_time=1)
+    def is_side_safe(self,decision):
+        self.leading_vehicle()
+        loop_break = False
+        self.my_location_waypoint = self.map.get_waypoint(self.player.get_location(), lane_type=carla.LaneType.Driving)
+        if decision == 1:
+            self.my_location_waypoint = self.my_location_waypoint.get_right_lane()
+        elif decision == -1:
+            self.my_location_waypoint = self.my_location_waypoint.get_left_lane()
+
+        # self.world.debug.draw_string(self.my_location_waypoint.transform.location, 'o', draw_shadow=True,
+        #                         color=carla.Color(r=0, g=255, b=255), life_time=999)
+
+        # tmp = self.waypoint.previous(10)[0].transform.location
+
+        for actor in self.extra_actors:
+            extra_pos = actor.get_transform().location
+            next_waypoints = None
+            for x in range(1, self.safe_distance + 1 - int(self.waypoint.lane_width), 1):
+
+                # if x== self.safe_distance - int(self.waypoint.lane_width):
+                #     print("h")
+                if self.my_location_waypoint is None:
+                    print(
+                        self.pre_my_location_waypoint)  # Waypoint(Transform(Location(x=4.583873, y=-90.357193, z=0.000000), Rotation(pitch=0.000000, yaw=-450.224854, roll=0.000000)))
+                    print(x)  # 1
+                else:
+                    next_waypoints = self.my_location_waypoint.next(x)
+                    self.pre_my_location_waypoint = self.my_location_waypoint
+
+                if next_waypoints is None or len(next_waypoints) == 0:
+                    print("next waypoints is none")
+                    return False
+                else:
+                    self.search_radius = ((extra_pos.x - next_waypoints[0].transform.location.x) ** 2 + (
+                            extra_pos.y - next_waypoints[0].transform.location.y) ** 2) ** 0.5
+
+                if self.search_radius <= self.waypoint.lane_width / 2:
+                    # print("추종 시작")
+                    self.leading_vehicle = actor
+                    # self.acc_start_time = time.time()
+                    loop_break = True
+                    break
+            if loop_break == True:
+                loop_break = False
+                break
     def search_leading_vehicle(self):
         loop_break = False
         self.my_location_waypoint = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving)
         if abs(self.waypoint.lane_id) > abs(self.my_location_waypoint.lane_id):
-            self.my_location_waypoint = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving).get_right_lane()
+            self.my_location_waypoint = self.my_location_waypoint.get_right_lane()
         elif abs(self.waypoint.lane_id) < abs(self.my_location_waypoint.lane_id):
-            self.my_location_waypoint = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving).get_left_lane()
+            self.my_location_waypoint = self.my_location_waypoint.get_left_lane()
 
         # self.world.debug.draw_string(self.my_location_waypoint.transform.location, 'o', draw_shadow=True,
         #                         color=carla.Color(r=0, g=255, b=255), life_time=999)

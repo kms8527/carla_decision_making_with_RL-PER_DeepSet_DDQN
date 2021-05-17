@@ -3,6 +3,8 @@
   <component name="ChangeListManager">
     <list default="true" id="882d62b1-9004-42d3-9ad9-3a9be8b261af" name="Default Changelist" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/Controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/Controller.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py" beforeDir="false" afterPath="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -11,6 +13,14 @@
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitSEFilterConfiguration">
+    <file-type-list>
+      <filtered-out-file-type name="LOCAL_BRANCH" />
+      <filtered-out-file-type name="REMOTE_BRANCH" />
+      <filtered-out-file-type name="TAG" />
+      <filtered-out-file-type name="COMMIT_BY_MESSAGE" />
+    </file-type-list>
   </component>
   <component name="ProjectId" id="1qrGF6ER2YQ1ubShgN0U0UyI5z5" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
@@ -120,6 +130,7 @@
       <workItem from="1620363422427" duration="3756000" />
       <workItem from="1620468670243" duration="40000" />
       <workItem from="1620528804263" duration="2000" />
+      <workItem from="1620988471808" duration="15728000" />
     </task>
     <task id="LOCAL-00001" summary="first commit">
       <created>1617859681585</created>
@@ -282,7 +293,21 @@
       <option name="project" value="LOCAL" />
       <updated>1620467341917</updated>
     </task>
-    <option name="localTasksCounter" value="24" />
+    <task id="LOCAL-00024" summary="perfect_code">
+      <created>1620988521481</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1620988521481</updated>
+    </task>
+    <task id="LOCAL-00025" summary="version2_perfect_codes">
+      <created>1620988616121</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1620988616121</updated>
+    </task>
+    <option name="localTasksCounter" value="26" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -316,19 +341,21 @@
     <MESSAGE value="idk_what is changed3" />
     <MESSAGE value="get_dr changed" />
     <MESSAGE value="asdf" />
-    <option name="LAST_COMMIT_MESSAGE" value="asdf" />
+    <MESSAGE value="perfect_code" />
+    <MESSAGE value="version2_perfect_codes" />
+    <option name="LAST_COMMIT_MESSAGE" value="version2_perfect_codes" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py</url>
-          <line>1009</line>
+          <line>1081</line>
           <option name="timeStamp" value="26" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/carla_decision_making_with_RL-DDQN/main_decision.py</url>
-          <line>943</line>
+          <line>1022</line>
           <option name="timeStamp" value="28" />
         </line-breakpoint>
       </breakpoints>
@@ -354,7 +381,7 @@
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
     <SUITE FILE_PATH="coverage/carla_decision_making_with_RL_DDQN_1_$main_decision.coverage" NAME="main_decision Coverage Results" MODIFIED="1617859445847" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
     <SUITE FILE_PATH="coverage/per_deepset_Q_ddqn$decision_trainer.coverage" NAME="decision_trainer Coverage Results" MODIFIED="1620353879065" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
-    <SUITE FILE_PATH="coverage/per_deepset_Q_ddqn$main_decision.coverage" NAME="main_decision Coverage Results" MODIFIED="1620367812441" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
+    <SUITE FILE_PATH="coverage/per_deepset_Q_ddqn$main_decision.coverage" NAME="main_decision Coverage Results" MODIFIED="1621213223852" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
     <SUITE FILE_PATH="coverage/per_deepset_Q_ddqn$Controller.coverage" NAME="Controller Coverage Results" MODIFIED="1618242305105" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="true" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/carla_decision_making_with_RL-DDQN" />
   </component>
 </project>
