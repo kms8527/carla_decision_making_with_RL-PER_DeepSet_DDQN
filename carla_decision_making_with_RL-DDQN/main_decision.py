@@ -1287,96 +1287,47 @@ class CarlaEnv():
             self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = True
 
-            # print("------------")
-            # print("pre:", self.pre_can_lane_change)
-            # print("now:", self.can_lane_change)
-            # print("------------")
-
-
         else:
             self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = False
 
-            # print("------------")
-            # print(decision)
-            # print("pre:", self.pre_can_lane_change)
-            # print("now:", self.can_lane_change)
-            # print("------------")
 
-            # print("finished lane change", self.pre_decision)
-        # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
-        #     self.decision_changed = True
-        #
-        #     if self.can_lane_change:
-        #         print("hi1")
-        #         return  -1
-        #     else:
-        #         print("hi2")
-        #         return 0
 
         if decision !=0:
-            if self.can_lane_change == False: # dont change frequently
-                return 0 #즉 직진
-            elif self.agent.selection_method == 'random' and decision == 1 and self.ego_Lane >= self.max_Lane_num-0.5: #dont leave max lane
-                # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
+            if self.agent.selection_method == 'max' and self.is_safe_action(decision)==False:
+                action = self.agent.q_value[0].sort()[1][1].item()-1
                 self.decision_changed = True
-                action = random.randrange(-1,1)
+                if self.is_safe_action(action)==True:
+                    pass
+                else:
+                    action = self.agent.q_value[0].sort()[1][0].item()-1
+                    assert action == 0, print(self.agent.q_value[0].sort(),"val:",self.agent.q_value[0].sort()[1][0].item())
 
-            elif self.agent.selection_method == 'random' and decision == -1 and self.ego_Lane <=1.5: #dont leave min lane
-                # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
+            elif self.agent.selection_method == 'random' and self.is_safe_action(decision)==False:
                 self.decision_changed = True
-                action = random.randrange(0, 2)
-
-            elif  self.agent.selection_method == 'max' and self.ego_Lane >= self.max_Lane_num-0.5 and decision == 1:
-                # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
-                self.decision_changed = True
-                remained_action_list = self.agent.q_value[0][0:2]
-                # print("remained_action_list:",remained_action_list)
-                action = int(remained_action_list.argmax().item())-1
-
-            elif self.agent.selection_method == 'max' and self.ego_Lane <= 1.5 and decision == -1:
-                # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
-                self.decision_changed = True
-                # remained_action_list =  self.agent.q_value[0][1:3]
-                # print("remained_action_list:",remained_action_list)
-                action =  int(self.agent.q_value[0][1:3].argmax().item())
-            elif self.agent.selection_method == 'max' and self.is_side_safe(decision) == False:
-                self.decision_changed = True
-                action = self.agent.q_value[0].sort()[1][1].item()
-                if self.is_side_safe(action) == False:
-                    action = self.agent.q_value[0].sort()[1][0].item()
-
-            elif self.agent.selection_method == 'random' and self.is_side_safe(decision) == False:
-                self.decision_changed = True
-                action = random.randrange(0, 3)
-                while self.is_side_safe(action) == False:
-                    action = random.randrange(0, 3)
+                while self.is_safe_action(action) == False:
+                    action = random.randrange(-1,2)
 
             if action != 0:# and self.can_lane_change(action,state):
                 self.lane_change_time = time.time()
-                # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
-                #     self.decision_changed = True
-                #     print("hi1")
-                #     action = -1
                 return action
             else:
-                # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
-                #     self.decision_changed = True
-                #     print("hi2")
-                #
-                #     self.lane_change_time = time.time()
-                #     return -1
-
                 return 0
         else:
-            # if action != -1 and x_static[0] == 4 and x_static[2] * self.ROI_length <= 5.0:
-            #     self.decision_changed = True
-            #     print("hi3")
-            #
-            #     self.lane_change_time = time.time()
-            #     return -1
-
             return 0
+
+    def is_safe_action(self,decision):
+        if decision !=0:
+            if self.can_lane_change == False: # dont change frequently
+                return True
+            elif decision == 1 and self.ego_Lane >= self.max_Lane_num-0.5: #dont leave max lane
+                return False
+            elif decision == -1 and self.ego_Lane <=1.5: #dont leave min lane
+                return False
+            elif self.is_side_safe(decision) == False:
+                return False
+        else:
+            return True
 
     def is_side_safe(self,decision):
         for num in range(self.extra_num):
@@ -1387,9 +1338,9 @@ class CarlaEnv():
                 player_vel = (self.player.get_velocity().x ** 2 + self.player.get_velocity().y ** 2 + self.player.get_velocity().z ** 2) ** 0.5
                 extra_vel = self.extra_list[num].get_velocity()
                 dv = player_vel - (extra_vel.x ** 2 + extra_vel.y ** 2 + extra_vel.z ** 2) ** 0.5
+                # print("앞 안전거리:", self.controller.safe_distance/3 - dv ,"뒤 안전거리 :", self.controller.safe_distance / 4 - dv)
+                # print("dr:",self.vehicles_distance_memory[num],"dv:",dv, "save_distance:",self.controller.safe_distance)
                 if abs(self.vehicles_distance_memory[num]) <= self.controller.safe_distance/3 - dv:
-                    # if 20 - dv < 0 :
-
                     if self.vehicles_distance_memory[num] > 0:
                         self.world.debug.draw_string(self.extra_list[num].get_transform().location,
                                                      'o', draw_shadow=True,
@@ -1400,6 +1351,8 @@ class CarlaEnv():
                             self.world.debug.draw_string(self.extra_list[num].get_transform().location,
                                                          'o', draw_shadow=True,
                                                          color=carla.Color(r=255, g=0, b=0), life_time=0.1)
+                            return False
+
             self.world.debug.draw_string(self.controller.my_location_waypoint.next(int(20-dv))[0].transform.location,
                                          'o', draw_shadow=True,
                                          color=carla.Color(r=255, g=255, b=255), life_time=-1)
@@ -1987,6 +1940,7 @@ class CarlaEnv():
 
                 else: #not training
 
+                    self.decision_changed = False
 
                     # print(self.decision)
                     if self.can_lane_change == False: #self.controller.is_lane_changing == True and self.controller.is_start_to_lane_change == False
