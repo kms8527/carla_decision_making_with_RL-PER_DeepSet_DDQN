@@ -60,7 +60,7 @@ class ReplayBuffer:
         values = [left_val, str_val, right_val]
 
 
-        f = open("/home/a/version_2_per_deepset/data/action_each_nums.txt", 'a')
+        f = open("/home/a/version_2_per_deepset/data/safety2_action_each_nums.txt", 'a')
         data = "%d\t " % epoch
         f.write(data)
 
@@ -615,7 +615,7 @@ class ReplayBuffer:
         values = [left_val, str_val, right_val]
 
 
-        f = open("/home/a/version_2_per_deepset/data/action_each_nums.txt", 'a')
+        f = open("/home/a/version_2_per_deepset/data/safety2_action_each_nums.txt", 'a')
         data = "%d\t " % epoch
         f.write(data)
 

@@ -29,7 +29,7 @@ import torch
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pyautogui
-writer = SummaryWriter()#'runs/May10_08-05-04_a')#runs/May09_13-35-46_a')
+writer = SummaryWriter('runs/May17_18-08-37_a')#'runs/May10_08-05-04_a')#runs/May09_13-35-46_a')
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -62,7 +62,8 @@ class CarlaEnv():
         torch.cuda.set_device(device)  # change allocation of current GPU
 
         self.safety_mode = True
-        self.mission_mode = True
+        self.safety_mode2 = True
+        self.mission_mode = False
         #화면 크기
         self.start_epoch = True
         self.input_size = 4  # dr dv da dl
@@ -645,40 +646,73 @@ class CarlaEnv():
         # end_length=math.sqrt((self.end_point.x - self.player.get_location().x)**2+(self.end_point.y - self.player.get_location().y)**2)
 
         done = False
-        if len(self.collision_sensor.history) != 0:
-            done = True
-            # print("collision")
-            self.collision_num +=1
-            reward = -10
-        elif decision == 1 and pre_ego_lane >= self.max_Lane_num:  # dont leave max lane
-            done = True
-            self.is_lane_out = True
-            self.right_col_num +=1
-            print("lane right collision")
-            reward = -10
-        elif decision == -1 and pre_ego_lane <= 1:  # dont leave min lane
-            done = True
-            self.left_col_num +=1
-            self.is_lane_out = True
-            print("lane left collision")
-            reward = -10
-        elif next_x_static[2] < 0 and self.ego_Lane > self.max_Lane_num :
-            done = True
-            self.exit_lane_col_num +=1
-            self.is_lane_out = True
-            # print("ego_Lane",self.ego_Lane,"mam lane",self.max_Lane_num)
-            print("Agent get into exit, Done")
-            reward = -10
-        else:
-            reward = (1-1*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))**3-plc
-            # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
-
-        if self.safety_mode == False:
-            if time.time()-self.simul_time > 25:
+        if self.mission_mode == False:
+            if time.time() - self.simul_time > 25:
                 print("simultime done")
                 done = True
                 reward = 0
+            elif len(self.collision_sensor.history) != 0:
+                done = True
+                # print("collision")
+                self.collision_num +=1
+                reward = -10
+            elif decision == 1 and pre_ego_lane >= self.max_Lane_num:  # dont leave max lane
+                done = True
+                self.is_lane_out = True
+                self.right_col_num +=1
+                print("lane right collision")
+                reward = -10
+            elif decision == -1 and pre_ego_lane <= 1:  # dont leave min lane
+                done = True
+                self.left_col_num +=1
+                self.is_lane_out = True
+                print("lane left collision")
+                reward = -10
+            elif next_x_static[2] < 0 and self.ego_Lane > self.max_Lane_num :
+                done = True
+                self.exit_lane_col_num +=1
+                self.is_lane_out = True
+                # print("ego_Lane",self.ego_Lane,"mam lane",self.max_Lane_num)
+                print("Agent get into exit, Done")
+                reward = -10
+            else:
+                reward = (1-1*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))**3-plc
+                # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
         else:
+            if len(self.collision_sensor.history) != 0:
+                done = True
+                # print("collision")
+                self.collision_num +=1
+                reward = -10
+            elif decision == 1 and pre_ego_lane >= self.max_Lane_num:  # dont leave max lane
+                done = True
+                self.is_lane_out = True
+                self.right_col_num +=1
+                print("lane right collision")
+                reward = -10
+            elif decision == -1 and pre_ego_lane <= 1:  # dont leave min lane
+                done = True
+                self.left_col_num +=1
+                self.is_lane_out = True
+                print("lane left collision")
+                reward = -10
+            elif next_x_static[2] < 0 and self.ego_Lane > self.max_Lane_num :
+                done = True
+                self.exit_lane_col_num +=1
+                self.is_lane_out = True
+                # print("ego_Lane",self.ego_Lane,"mam lane",self.max_Lane_num)
+                print("Agent get into exit, Done")
+                reward = -10
+            else:
+                reward = (1-1*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))**3-plc
+                # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
+
+        # if self.mission_mode == False:
+            # if time.time()-self.simul_time > 25:
+            #     print("simultime done")
+            #     done = True
+            #     reward = 0
+        if self.mission_mode == True:
             if self.uclidian_distance(self.get_waypoint_of_first_lane(self.player).transform.location,self.mission_goal_point) < 5:
                 self.mission_clear_num +=1
                 done = True
@@ -1291,8 +1325,6 @@ class CarlaEnv():
             self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = False
 
-
-
         if decision !=0:
             if self.agent.selection_method == 'max' and self.is_safe_action(decision)==False:
                 action = self.agent.q_value[0].sort()[1][1].item()-1
@@ -1301,7 +1333,7 @@ class CarlaEnv():
                     pass
                 else:
                     action = self.agent.q_value[0].sort()[1][0].item()-1
-                    assert action == 0, print(self.agent.q_value[0].sort(),"val:",self.agent.q_value[0].sort()[1][0].item())
+                    # assert action == 0, print(self.agent.q_value[0].sort(),"val:",self.agent.q_value[0].sort()[1][0].item())
 
             elif self.agent.selection_method == 'random' and self.is_safe_action(decision)==False:
                 self.decision_changed = True
@@ -1347,7 +1379,7 @@ class CarlaEnv():
                                                      color=carla.Color(r=255, g=0, b=0), life_time=0.1)
                         return False
                     else:
-                        if abs(self.vehicles_distance_memory[num]) <= self.controller.safe_distance / 4 - dv:
+                        if abs(self.vehicles_distance_memory[num]) <= self.controller.safe_distance / 6 - dv:
                             self.world.debug.draw_string(self.extra_list[num].get_transform().location,
                                                          'o', draw_shadow=True,
                                                          color=carla.Color(r=255, g=0, b=0), life_time=0.1)
@@ -1356,7 +1388,7 @@ class CarlaEnv():
             self.world.debug.draw_string(self.controller.my_location_waypoint.next(int(20-dv))[0].transform.location,
                                          'o', draw_shadow=True,
                                          color=carla.Color(r=255, g=255, b=255), life_time=-1)
-            self.world.debug.draw_string(self.controller.my_location_waypoint.previous( self.controller.safe_distance / 4 - dv)[0].transform.location,
+            self.world.debug.draw_string(self.controller.my_location_waypoint.previous( self.controller.safe_distance / 6 - dv)[0].transform.location,
                                          'o', draw_shadow=True,
                                          color=carla.Color(r=255, g=255, b=255), life_time=0.1)
         return True
@@ -1582,7 +1614,7 @@ class CarlaEnv():
         epoch = 0
         device = torch.device('cuda')
 
-        load_dir = PATH+'trained_info4083.pt'
+        load_dir = PATH+'safe2_train_info954.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
@@ -1686,12 +1718,12 @@ class CarlaEnv():
                         self.decision = 0
                         # print(0)
                     else:
-                        self.decision = self.agent.act(state, x_static)
+                        self.decision= self.agent.act(state, x_static)
 
                     before_safety_decision = self.decision
 
                     if self.safety_mode == True:
-                        self.decision = self.safety_check(self.decision)
+                        self.decision = self.safety_check2(self.decision)
                     else:
                         self.decision = self.loose_safety_check(self.decision)
 
@@ -1806,23 +1838,37 @@ class CarlaEnv():
                             self.agent.target_model.load_state_dict(self.agent.model.state_dict())
 
                         client.set_timeout(10)
-                        # if epoch % 1 == 0:
-                        #     # [w, b] = self.agent.model.parameters()  # unpack parameters
-                        #     self.save_dir = torch.save({
-                        #         'epoch': epoch,
-                        #         'model_state_dict': self.agent.model.state_dict(),
-                        #         'target_model_dict': self.agent.target_model.state_dict(),
-                        #         'optimizer_state_dict': self.agent.optimizer.state_dict(),
-                        #         'data': self.agent.buffer.buffer,
-                        #         'left_col': self.left_col_num,
-                        #         'right_col':self.right_col_num,
-                        #         'exit_col':self.exit_lane_col_num,
-                        #         'vehicle_col': self.collision_num,
-                        #         'clear_num': self.mission_clear_num,
-                        #         'iter': self.iter,
-                        #         # 'memorybuffer': self.agent.buffer.buffer,
-                        #         'epsilon': self.agent.epsilon},
-                        #         PATH + "mission_info" + str(epoch) + ".pt")  # +str(epoch)+
+                        if self.mission_mode == True:
+                            if epoch % 1 == 0:
+                                # [w, b] = self.agent.model.parameters()  # unpack parameters
+                                self.save_dir = torch.save({
+                                    'epoch': epoch,
+                                    'model_state_dict': self.agent.model.state_dict(),
+                                    'target_model_dict': self.agent.target_model.state_dict(),
+                                    'optimizer_state_dict': self.agent.optimizer.state_dict(),
+                                    'data': self.agent.buffer.buffer,
+                                    'left_col': self.left_col_num,
+                                    'right_col':self.right_col_num,
+                                    'exit_col':self.exit_lane_col_num,
+                                    'vehicle_col': self.collision_num,
+                                    'clear_num': self.mission_clear_num,
+                                    'iter': self.iter,
+                                    # 'memorybuffer': self.agent.buffer.buffer,
+                                    'epsilon': self.agent.epsilon},
+                                    PATH + "mission_info" + str(epoch) + ".pt")  # +str(epoch)+
+                        if self.safety_mode == True:
+                            if epoch % 1 == 0:
+                                # [w, b] = self.agent.model.parameters()  # unpack parameters
+                                self.save_dir = torch.save({
+                                    'epoch': epoch,
+                                    'model_state_dict': self.agent.model.state_dict(),
+                                    'target_model_dict': self.agent.target_model.state_dict(),
+                                    'optimizer_state_dict': self.agent.optimizer.state_dict(),
+                                    'data': self.agent.buffer.buffer,
+                                    # 'memorybuffer': self.agent.buffer.buffer,
+                                    'epsilon': self.agent.epsilon},
+                                    PATH + "safe2_train_info" + str(epoch) + ".pt")  # +str(epoch)+
+
 
                         self.restart()
                         self.start_epoch = False
@@ -1959,8 +2005,8 @@ class CarlaEnv():
                         if self.mission_mode == False:
                             self.scenario = "random"
                             self.agent.is_training = True
-                        writer.add_scalar('누적 보상 ', self.accumulated_reward, epoch)
-                        epoch += 1
+                            writer.add_scalar('누적 보상 ', self.accumulated_reward, epoch)
+                            epoch += 1
                         self.restart()
                         self.start_epoch = False
 
@@ -2003,24 +2049,23 @@ class CarlaEnv():
 
                     if done:
 
-                        print("epoch : ", epoch, "누적 보상 : ", self.accumulated_reward)
-                        writer.add_scalar('누적 보상 ', self.accumulated_reward, epoch)
-                        epoch += 1
                         self.eplased_time = time.time() - self.simul_time
-
-                        f = open("/home/a/version_2_per_deepset/data/mission_history.txt", 'a')
-    #시나리오 반복 횟수, 미션 성공수    , 소요 시간,      평균 속도, 	차선 변경 횟수,	   left, 	    right,    exit colision   vehicle collision  퍙군속도 구하는데 들어간 iteration 수
-                        data_list = [self.iter, self.mission_clear_num, self.eplased_time,self.controller.vel_history,self.controller.lane_change_history,self.left_col_num, self.right_col_num, self.exit_lane_col_num, self.collision_num, self.controller.history_num]
-                        for data in data_list:
-                            input = "%f \t" % data
-                            f.write(input)
-                        f.write("\n")
-                        f.close()
-
-                        client.set_timeout(10)
-                        if self.mission_mode == False:
+                        if self.mission_mode == True:
+                            f = open("/home/a/version_2_per_deepset/data/mission_history.txt", 'a')
+        #시나리오 반복 횟수, 미션 성공수    , 소요 시간,      평균 속도, 	차선 변경 횟수,	   left, 	    right,    exit colision   vehicle collision  퍙군속도 구하는데 들어간 iteration 수
+                            data_list = [self.iter, self.mission_clear_num, self.eplased_time,self.controller.vel_history,self.controller.lane_change_history,self.left_col_num, self.right_col_num, self.exit_lane_col_num, self.collision_num, self.controller.history_num]
+                            for data in data_list:
+                                input = "%f \t" % data
+                                f.write(input)
+                            f.write("\n")
+                            f.close()
+                        else:
                             self.scenario = "random"
                             self.agent.is_training = True
+                            print("epoch : ", epoch, "누적 보상 : ", self.accumulated_reward)
+                            writer.add_scalar('누적 보상 ', self.accumulated_reward, epoch)
+                            epoch += 1
+                        client.set_timeout(10)
                         self.restart()
                         self.start_epoch = False
 
