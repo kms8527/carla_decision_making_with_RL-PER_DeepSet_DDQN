@@ -29,7 +29,7 @@ import torch
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pyautogui
-writer = SummaryWriter('runs/May17_18-08-37_a')#'runs/May10_08-05-04_a')#runs/May09_13-35-46_a')
+writer = SummaryWriter('runs/May18_19-16-57_a')#'runs/May10_08-05-04_a')#runs/May09_13-35-46_a')
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -653,7 +653,7 @@ class CarlaEnv():
                 reward = 0
             elif len(self.collision_sensor.history) != 0:
                 done = True
-                # print("collision")
+                print("collision")
                 self.collision_num +=1
                 reward = -10
             elif decision == 1 and pre_ego_lane >= self.max_Lane_num:  # dont leave max lane
@@ -681,7 +681,7 @@ class CarlaEnv():
         else:
             if len(self.collision_sensor.history) != 0:
                 done = True
-                # print("collision")
+                print("collision")
                 self.collision_num +=1
                 reward = -10
             elif decision == 1 and pre_ego_lane >= self.max_Lane_num:  # dont leave max lane
@@ -1304,6 +1304,7 @@ class CarlaEnv():
             return 0
 
     def safety_check2(self,decision, safe_lane_change_again_time=2.5):
+        self.side_leading_dr = None
         action = decision ############### if this line deleted, not alert error properly
         # a=(time.time() - self.lane_change_time)
 
@@ -1372,18 +1373,26 @@ class CarlaEnv():
                 dv = player_vel - (extra_vel.x ** 2 + extra_vel.y ** 2 + extra_vel.z ** 2) ** 0.5
                 # print("앞 안전거리:", self.controller.safe_distance/3 - dv ,"뒤 안전거리 :", self.controller.safe_distance / 4 - dv)
                 # print("dr:",self.vehicles_distance_memory[num],"dv:",dv, "save_distance:",self.controller.safe_distance)
-                if abs(self.vehicles_distance_memory[num]) <= self.controller.safe_distance/3 - dv:
-                    if self.vehicles_distance_memory[num] > 0:
-                        self.world.debug.draw_string(self.extra_list[num].get_transform().location,
-                                                     'o', draw_shadow=True,
-                                                     color=carla.Color(r=255, g=0, b=0), life_time=0.1)
-                        return False
-                    else:
-                        if abs(self.vehicles_distance_memory[num]) <= self.controller.safe_distance / 6 - dv:
-                            self.world.debug.draw_string(self.extra_list[num].get_transform().location,
-                                                         'o', draw_shadow=True,
-                                                         color=carla.Color(r=255, g=0, b=0), life_time=0.1)
-                            return False
+                self.side_lead_safe_distance = self.controller.safe_distance / 3 - dv
+                self.side_back_safe_distance = self.controller.safe_distance / 6 - dv
+
+                if self.vehicles_distance_memory[num] > 0 and abs(self.vehicles_distance_memory[num]) <= self.side_lead_safe_distance:
+                    self.world.debug.draw_string(self.extra_list[num].get_transform().location,
+                                                 'o', draw_shadow=True,
+                                                 color=carla.Color(r=255, g=0, b=0), life_time=0.1)
+                    self.side_leading_dr = self.vehicles_distance_memory[num]
+                    return False
+                elif self.vehicles_distance_memory[num] < 0 and abs(self.vehicles_distance_memory[num]) <= self.side_back_safe_distance:
+                    self.world.debug.draw_string(self.extra_list[num].get_transform().location,
+                                                 'o', draw_shadow=True,
+                                                 color=carla.Color(r=255, g=0, b=0), life_time=0.1)
+                    self.side_leading_dr = self.vehicles_distance_memory[num]
+                    return False
+
+
+
+
+
 
             self.world.debug.draw_string(self.controller.my_location_waypoint.next(int(20-dv))[0].transform.location,
                                          'o', draw_shadow=True,
@@ -1614,7 +1623,7 @@ class CarlaEnv():
         epoch = 0
         device = torch.device('cuda')
 
-        load_dir = PATH+'safe2_train_info954.pt'
+        load_dir = PATH+'safe2_train_info230.pt'
         if(os.path.exists(load_dir)):
 
             print("저장된 가중치 불러옴")
@@ -1784,7 +1793,26 @@ class CarlaEnv():
                             self.agent.buffer.append(sample)
                             self.agent.memorize_td_error(0)
 
-                        if self.decision_changed:
+                        if self.side_leading_dr is not None:
+
+                            if self.side_leading_dr >= 0:
+                                d = self.side_lead_safe_distance
+                                x = self.side_leading_dr.item()
+                                reward = - 20 / (d ** 3) * x ** 3 + 30 / (d ** 2) * (x ** 2) - 2
+
+                            else:
+                                d = self.side_back_safe_distance
+                                x = abs(self.side_leading_dr.item())
+                                reward = -20 / (d ** 3) * x ** 3 + 30 / (d ** 2) * (x ** 2) - 2
+
+                            # print("dr:",x, "d: ",d, "reward: ",reward)
+
+                            sample = [state, x_static, before_safety_decision, reward, None, None, done]
+                            self.agent.buffer.append(sample)
+                            self.agent.memorize_td_error(0)
+
+
+                        elif self.decision_changed:
                             # if x_static[0] <=1.5:+
                             #     print("lane 1 :", before_safety_decision)
                             # elif x_static[lane_change_fin, straight:0]>3.5:
@@ -1867,7 +1895,7 @@ class CarlaEnv():
                                     'data': self.agent.buffer.buffer,
                                     # 'memorybuffer': self.agent.buffer.buffer,
                                     'epsilon': self.agent.epsilon},
-                                    PATH + "safe2_train_info" + str(epoch) + ".pt")  # +str(epoch)+
+                                    PATH + "safe2_train_info_R_-2" + str(epoch) + ".pt")  # +str(epoch)+
 
 
                         self.restart()
@@ -1957,8 +1985,25 @@ class CarlaEnv():
 
                             # print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
 
+                        if self.side_leading_dr is not None:
 
-                        if self.decision_changed:
+                            if self.side_leading_dr>=0:
+                                d = self.side_lead_safe_distance
+                                x=  self.side_leading_dr.item()
+                                reward =- 20 / (d ** 3) * x ** 3 + 30 / (d ** 2) * (x ** 2) - 2
+
+                            else:
+                                d = self.side_back_safe_distance
+                                x = abs(self.side_leading_dr.item())
+                                reward = -20/(d**3) * x**3+30/(d**2)*(x**2) -2
+
+                            # print("dr:",x, "d: ",d, "reward: ",reward)
+
+                            sample = [state, x_static, before_safety_decision, reward, None, None, done]
+                            self.agent.buffer.append(sample)
+                            self.agent.memorize_td_error(0)
+
+                        elif self.decision_changed:
                             # if x_static[0] <=1.5:
                             #     print("lane 1 :", before_safety_decision)
                             # elif x_static[0]>3.5:

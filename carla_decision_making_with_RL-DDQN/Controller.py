@@ -103,6 +103,7 @@ class Pure_puresuit_controller:
         self.pre_decision = None
         self.check = 0
         self.vel_history = 0
+
         self.history_num = 0
         self.lane_change_history = 0
 
