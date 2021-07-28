@@ -346,7 +346,10 @@ class Pure_puresuit_controller:
         # tmp = self.waypoint.previous(10)[0].transform.location
 
         for actor in self.extra_actors:
-            extra_pos = actor.get_transform().location
+            if actor.is_alive:
+                extra_pos = actor.get_transform().location
+            else:
+                continue
             next_waypoints = None
             for x in range(1, self.safe_distance + 1 - int(self.waypoint.lane_width), 1):
 
