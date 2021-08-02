@@ -135,7 +135,6 @@ class CarlaEnv():
 
         settings = self.world.get_settings()
         # settings.synchronous_mode = True  # Enables synchronous mode
-        # world.apply_settings(settings)
         settings.fixed_delta_seconds = 0.01
         self.world.apply_settings(settings)
         self.extra_num = 20
@@ -153,7 +152,7 @@ class CarlaEnv():
         self.pre_max_Lane_num = self.max_Lane_num
         self.ready_to_store_sample = False
         self.is_lane_out = False
-
+        self.actor_pos = None # carla.location type
         self.lane_start_point = [carla.Location(x=14.905815, y=-135.747452, z=0.000000),
                                  carla.Location(x=172.745468, y=-364.531799, z=0.000000),
                                  carla.Location(x=382.441040, y=-212.488907, z=0.000000),
@@ -165,11 +164,22 @@ class CarlaEnv():
                                     carla.Location(x=-136.986206, y=5.763320, z=7.994740),
                                     carla.Location(x=15.144917, y=-74.823540, z=0.000000)]
 
+        self.lane_change_point = []  # [carla.Location(x=14.905815, y=-135.747452, z=0.000000),carla.Location(x=14.631096, y=-205.746918, z=0.000000),carla.Location(x=172.745468, y=-364.531799, z=0.000000) ,carla.Location(x=232.962860, y=-364.149139, z=0.000000), carla.Location(x=382.441040, y=-212.488907, z=0.000000),carla.Location(x=376.542816, y=-10.352980, z=0.000000)]
+        for i in range(len(self.lane_start_point)):
+            self.lane_change_point.append(self.lane_start_point[i])
+            self.lane_change_point.append(self.lane_finished_point[i])
+        self.lane_distance_between_points = []
+        for i in range(len(self.lane_finished_point)):
+            self.lane_distance_between_points.append(self.uclidian_distance(self.lane_start_point[i],self.lane_finished_point[i]))
+
+        self.visualize_virtual_invalid_forth_lane()
+
         self.restart()
         self.main()
 
     def restart(self):
         self.is_lane_out = False
+        self.actor_pos = None
         # self.check = 0
         self.append_lane_change_sample=False
         self.decision = 0
@@ -196,9 +206,10 @@ class CarlaEnv():
         self.episode_start = time.time()
         self.pre_max_Lane_num = self.max_Lane_num
         self.index = 0
+        self.iter = 0
         self.arrive_lane_chagne_change_point = False
         # print('start destroying actors.')
-
+        # Traffic_light.freeze(True)
         self.clear_all_actors()
 
         global actors
@@ -282,7 +293,7 @@ class CarlaEnv():
             end = distance_step * self.extra_num# (self.extra_num + len(self.lane_start_point))
             # for i in range(distance_step, end, distance_step):
             while extra_spawn_point <= end:
-                dl = random.choice([-1, 0, 1, 2]) ## for 4 lane spawn: , 2])
+                dl = random.choice([-1, 0, 1]) ## for 4 lane spawn: , 2])
                 self.extra_dl_list.append(dl)
                 if dl == -1:
                     spawn_point = self.spawn_waypoint.next(extra_spawn_point)[0].get_left_lane().transform
@@ -290,13 +301,13 @@ class CarlaEnv():
                     spawn_point = self.spawn_waypoint.next(extra_spawn_point)[0].transform
                 elif dl == 1:
                     spawn_point = self.spawn_waypoint.next(extra_spawn_point)[0].get_right_lane().transform
-                elif dl == 2:
-                    if self.check_max_lane(self.spawn_waypoint.next(extra_spawn_point)[0].transform.location,
-                                           self.lane_start_point, self.lane_finished_point) == 3:
-                        continue
-                    else:
-                        spawn_point = self.spawn_waypoint.next(extra_spawn_point)[
-                            0].get_right_lane().get_right_lane().transform
+                # elif dl == 2:
+                #     if self.check_max_lane(self.spawn_waypoint.next(extra_spawn_point)[0].transform.location,
+                #                            self.lane_start_point, self.lane_finished_point) == 3:
+                #         continue
+                #     else:
+                #         spawn_point = self.spawn_waypoint.next(extra_spawn_point)[
+                #             0].get_right_lane().get_right_lane().transform
                 else:
                     print("Except ")
 
@@ -323,15 +334,15 @@ class CarlaEnv():
                 extra_spawn_point += 20
 
 ##--lane_start_point extra spawn
-            for point in self.lane_start_point:
-                spawn_point = self.map.get_waypoint(point, lane_type=carla.LaneType.Driving).next(1)[0]
-                spawn_point = carla.Transform((spawn_point.transform.location + carla.Location(z=1)),
-                                              spawn_point.transform.rotation)
-                spawn_points.append(spawn_point)
-                # print(extra_spawn_point.transform.location)
-                trash_extra = world.spawn_actor(blueprint, spawn_point)
-                self.trash_extra_list.append(trash_extra)
-                actors.append(trash_extra)
+            # for point in self.lane_start_point:
+            #     spawn_point = self.map.get_waypoint(point, lane_type=carla.LaneType.Driving).next(1)[0]
+            #     spawn_point = carla.Transform((spawn_point.transform.location + carla.Location(z=1)),
+            #                                   spawn_point.transform.rotation)
+            #     spawn_points.append(spawn_point)
+            #     # print(extra_spawn_point.transform.location)
+            #     trash_extra = world.spawn_actor(blueprint, spawn_point)
+            #     self.trash_extra_list.append(trash_extra)
+            #     actors.append(trash_extra)
 ##--lane_start_point extra spawn
 
             # spawn_point = carla.Transform(carla.Location(x=14.797643, y=-163.310318, z=2.000000),
@@ -339,11 +350,13 @@ class CarlaEnv():
             # blueprint = random.choice(blueprints)
             # print("spawn_points:",*spawn_points)
             # print(self.extra_dl_list)
+
             for extra in self.extra_list:
                 if self.pilot_style == "auto":
                     extra.set_autopilot()
                 elif self.pilot_style == "manual":
                     tm.auto_lane_change(extra, False)
+
                     # tm.vehicle_percentage_speed_difference(extra,0)
                     # controller = Pure_puresuit_controller(extra, self.spawn_waypoint, None, 30)  # km/h
                     # self.extra_controller_list.append(controller)
@@ -458,10 +471,13 @@ class CarlaEnv():
                 #     color = '255,255,255'
                 #     blueprint.set_attribute('color', color)
                 extra = self.world.spawn_actor(blueprint, spawn_point)
-                if i < 4:
-                    self.extra_list.append(extra)
-                else:
-                    trash_extra = extra
+
+                self.extra_list.append(extra)
+                # if i < 4:
+                #     self.extra_list.append(extra)
+                # else:
+                #     trash_extra = extra
+
             for extra in self.extra_list:
                 if self.pilot_style == "auto":
                     extra.set_autopilot()
@@ -472,8 +488,10 @@ class CarlaEnv():
                     target_velocity = 20.0
 
                     extra.enable_constant_velocity(extra.get_transform().get_right_vector() * target_velocity / 3.6)
-            trash_extra.enable_constant_velocity(extra.get_transform().get_right_vector() * 0.0 / 3.6)
-            trash_extra.destroy()
+
+            # trash_extra.enable_constant_velocity(extra.get_transform().get_right_vector() * 0.0 / 3.6)
+            # trash_extra.destroy()
+
         elif self.scenario == "validation":
             self.extra_dl_list=[0, 0, 1, -1, 1, 1, -1, 0, 1, 0, 1, -1, -1, 1, 0, -1, -1, 0, 0, -1]
             spawn_points = [carla.Transform(carla.Location(x=8.023607, y=-105.720062, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=7.945116, y=-125.719902, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=11.366597, y=-145.733475, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=4.288160, y=-165.705856, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-450.224854, roll=0.000000)), carla.Transform(carla.Location(x=11.209615, y=-185.733170, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=11.131124, y=-205.733017, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-90.224854, roll=0.000000)), carla.Transform(carla.Location(x=4.167244, y=-225.503204, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-88.029251, roll=0.000000)), carla.Transform(carla.Location(x=9.491584, y=-244.189850, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-80.877213, roll=0.000000)), carla.Transform(carla.Location(x=17.005051, y=-261.642273, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-73.725182, roll=0.000000)), carla.Transform(carla.Location(x=20.061684, y=-280.395905, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-66.573143, roll=0.000000)), carla.Transform(carla.Location(x=31.654175, y=-295.450928, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-59.421112, roll=0.000000)), carla.Transform(carla.Location(x=36.481331, y=-315.009735, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-52.269077, roll=0.000000)), carla.Transform(carla.Location(x=49.242310, y=-329.531738, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-45.117043, roll=0.000000)), carla.Transform(carla.Location(x=68.018288, y=-336.833252, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-37.965008, roll=0.000000)), carla.Transform(carla.Location(x=81.458138, y=-350.264893, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-30.812973, roll=0.000000)), carla.Transform(carla.Location(x=96.853889, y=-362.118622, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-23.660938, roll=0.000000)), carla.Transform(carla.Location(x=115.010300, y=-368.757507, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-16.508904, roll=0.000000)), carla.Transform(carla.Location(x=134.421051, y=-369.630768, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-9.356870, roll=0.000000)), carla.Transform(carla.Location(x=153.220459, y=-371.533997, z=1.000000), carla.Rotation(pitch=0.000000, yaw=-2.204835, roll=0.000000)), carla.Transform(carla.Location(x=172.837189, y=-375.031403, z=1.000000), carla.Rotation(pitch=0.000000, yaw=0.501399, roll=0.000000))]
@@ -585,7 +603,8 @@ class CarlaEnv():
     #     self.controller = Pure_puresuit_controller(self.player, self.spawn_waypoint, self.extra_list, 70)  # km/h
 
     def check_max_lane(self,actor_pos, lane_start_point, lane_finished_point):
-        if self.search_section(actor_pos, lane_start_point, lane_finished_point)%2 ==0:
+        self.section = self.search_section(actor_pos, lane_start_point, lane_finished_point)
+        if self.section % 2 == 0:
             return 4
         else:
             return 3
@@ -597,18 +616,9 @@ class CarlaEnv():
         :param lane_finished_point: carla.location
         :return: int
         """
-        # self.lane_start_point = [carla.Location(x=14.905815, y=-135.747452, z=0.000000),
-        #                          carla.Location(x=172.745468, y=-364.531799, z=0.000000),
-        #                          carla.Location(x=382.441040, y=-212.488907, z=0.000000),
-        #                          carla.Location(x=161.251068, y=7.560803, z=8.935559),
-        #                          carla.Location(x=16.137751, y=143.156509, z=0.000000)]
-        # self.lane_finished_point = [carla.Location(x=14.631096, y=-205.746918, z=0.000000),
-        #                             carla.Location(x=232.962860, y=-364.149139, z=0.000000),
-        #                             carla.Location(x=376.542816, y=-10.352980, z=0.000000),
-        #                             carla.Location(x=-136.986206, y=5.763320, z=7.994740),
-        #                             carla.Location(x=15.144917, y=-74.823540, z=0.000000)]
 
-        if (actor_pos.x >= lane_finished_point[4].x-20.0 and actor_pos.x < lane_start_point[0].x) and (actor_pos.y >=lane_start_point[0].y and actor_pos.y < lane_finished_point[4].y):
+
+        if (actor_pos.x >= lane_finished_point[4].x-20.0 and actor_pos.x < lane_start_point[0].x+5) and (actor_pos.y >=lane_start_point[0].y and actor_pos.y < lane_finished_point[4].y):
             return 0
         elif (actor_pos.x >= lane_finished_point[0].x-20.0 and actor_pos.x < lane_start_point[0].x+5) and (actor_pos.y >= lane_finished_point[0].y and actor_pos.y < lane_start_point[0].y):
             return 1
@@ -622,10 +632,13 @@ class CarlaEnv():
             return 5
         elif (actor_pos.x >= lane_start_point[3].x and actor_pos.x < lane_finished_point[2].x + 20.0) and (actor_pos.y >= lane_finished_point[2].y and actor_pos.y < lane_start_point[3].y+10):
             return 6
-        elif (actor_pos.x >= lane_finished_point[3].x and actor_pos.x < lane_start_point[3].x) and (actor_pos.y >= lane_finished_point[3].y and actor_pos.y < lane_start_point[3].y+10):
+        elif (actor_pos.x >= lane_finished_point[3].x and actor_pos.x < lane_start_point[3].x) and (actor_pos.y >= lane_finished_point[3].y-10 and actor_pos.y < lane_start_point[3].y+10) and (self.index == 6 or self.index == 7):
             return 7
+        elif (actor_pos.x >= lane_finished_point[4].x-20.0 and actor_pos.x < lane_start_point[4].x+5) and (actor_pos.y >= lane_finished_point[4].y and actor_pos.y < lane_start_point[4].y) and (self.index == 8 or self.index == 9):
+            return 9
         else:
             return 8
+
     def clear_all_actors(self):
         if len(self.actor_list) != 0:
             # print('destroying actors.')
@@ -673,8 +686,8 @@ class CarlaEnv():
     def is_extra_front_than_this_point(self,extra_pos,point):
         """
 
-        :param extra_pos:  carla.location type
-        :param point: carla.Transform type
+        :param extra_pos:  carla.location type, extra first lane pos
+        :param point: carla.Transform type,
         :return: bool type
         """
         extra_pos_tensor = torch.tensor([[extra_pos.x, extra_pos.y, extra_pos.z, 1.0]])
@@ -726,6 +739,7 @@ class CarlaEnv():
         #     plc += 10
         #     decision = 1
         pre_ego_lane = self.ego_Lane
+
         tmp = self.get_next_state(decision)  # get now state
 
         if tmp is None:
@@ -841,13 +855,13 @@ class CarlaEnv():
 
         # self.world.debug.draw_string(ego_first_lane.transform.location,
         #                              'o', draw_shadow=True,
-        #                              color=carla.Color(r=255, g=0, b=0), life_time=1)
+        #                              color=carla.Color(r=255, g=0, b=0), life_time=0.1)
         # self.world.debug.draw_string(extra_first_pos,
         #                              'o', draw_shadow=True,
-        #                              color=carla.Color(r=255, g=255, b=255), life_time=1)
+        #                              color=carla.Color(r=255, g=255, b=255), life_time=0.1)
 
-        if self.vehicles_distance_memory[num] != 0:
-            if self.vehicles_distance_memory[num] > 0:
+        if self.vehicles_distance_memory[num] != 0: # abpit not initial state
+            if self.vehicles_distance_memory[num] > 0: # about front extra vehicle
                 if isinstance(waypoint,bool) or len(waypoint.next(self.vehicles_distance_memory[num].item()))==0:
                     return False
                 tmp = waypoint.next(self.vehicles_distance_memory[num].item())[0].transform
@@ -856,8 +870,6 @@ class CarlaEnv():
                 if isinstance(waypoint,bool) or len( waypoint.previous(abs(self.vehicles_distance_memory[num].item())))==0:
                     return False
                 tmp = waypoint.previous(abs(self.vehicles_distance_memory[num].item()))[0].transform
-
-
 
             if self.is_extra_front_than_this_point(extra_first_pos,tmp):
                 self.vehicles_distance_memory[num] += self.uclidian_distance(tmp.location, extra_first_pos)
@@ -885,6 +897,15 @@ class CarlaEnv():
         dr, dv, da : now state
         """
         state = []
+        self.actor_pos = self.player.get_transform().location
+        # self.get_max_lane(self.lane_distance_between_points)
+        self.max_Lane_num = self.check_max_lane(self.actor_pos, self.lane_start_point,self.lane_finished_point)
+
+        lane_valid_distance = self.search_distance_valid(self.max_Lane_num)
+        if lane_valid_distance is None:
+            return None
+        # else: ## for debug
+        #     print("lane_valid_distance:", lane_val"id_distance)
 
         for x, extra in enumerate(self.extra_list):
 
@@ -915,6 +936,7 @@ class CarlaEnv():
             # dr = sign * self.uclidian_distance(cur_agent_pos,extra_pos) - abs(self.spawn_waypoint.lane_width*(self.extra_dl_list[x]))
 
             dr = self.get_dr(extra,x)
+
             # print(dr)
             if dr == False:
                 return None
@@ -971,11 +993,6 @@ class CarlaEnv():
         #     print("here")
 
         x_static= []
-        lane_valid_distance = self.search_distance_valid()
-        if lane_valid_distance is None:
-            return None
-        # else: ## for debug
-        #     print("lane_valid_distance:", lane_valid_distance)
 
         x_static.append(torch.tensor([self.ego_Lane, self.controller.velocity / 100.0, lane_valid_distance / self.ROI_length]))
 
@@ -992,20 +1009,73 @@ class CarlaEnv():
         return ((a.x-b.x)**2+(a.y-b.y)**2+(a.z-b.z)**2)**0.5
 
     def get_distance_from_waypoint_to_goal_point(self, starting_waypoint, goal_point):
+        """
+        starting_waypoint : actor's last lane waypoint position
+        goal_point  :  goal position
+        """
+
         distance1 = 0
         step = 6
         waypoint = starting_waypoint
+        # print("distance memroy:", self.distance_memory)
         if self.distance_memory is not None:
-            self.distance_memory -= self.uclidian_distance(waypoint.next(self.disfftance_memory)[0].trasnform.location,
-                                                           goal_point)
+            # tmp = self.uclidian_distance(waypoint.transform.location, goal_point)
+            # if tmp >= 10:
+            #     print("asdf")
+            estimated_waypoint = waypoint.next(self.distance_memory)[0]
+
+            # if self.distance_memory > 0:
+            #     self.world.debug.draw_string(waypoint.next(self.distance_memory)[0].transform.location,
+            #                                  'o', draw_shadow=True,
+            #                                  color=carla.Color(r=255, g=0, b=0), life_time=9991)
+            #     self.world.debug.draw_string(goal_point,
+            #                                  'o', draw_shadow=True,
+            #                                  color=carla.Color(r=0, g=0, b=255), life_time=9991)
+
+
+            if self.is_extra_front_than_this_point(goal_point,estimated_waypoint.transform):
+                self.distance_memory += self.uclidian_distance(estimated_waypoint.transform.location, goal_point)
+            else:
+                self.distance_memory -= self.uclidian_distance(estimated_waypoint.transform.location, goal_point)
+
+            if self.distance_memory < 0:
+                self.world.debug.draw_string(estimated_waypoint.transform.location,
+                                                 'o', draw_shadow=True,
+                                                 color=carla.Color(r=255, g=0, b=0), life_time=9999)
+                # self.world.debug.draw_string(goal_point,
+                #                              'o', draw_shadow=True,
+                #                              color=carla.Color(r=255, g=0, b=255), life_time=9999)
+
             return self.distance_memory
+
         else:
             while self.uclidian_distance(waypoint.transform.location, goal_point) >= 2 * step:
-                if len(waypoint.next(step))==0:
+                if len(waypoint.next(step)) == 0:
                     return False
                 waypoint = waypoint.next(step)[0]
                 distance1 += step
-            return distance1 + self.uclidian_distance(waypoint.transform.location, goal_point)
+
+                # print(waypoint.transform.location)
+                # print(goal_point)
+                # print(self.uclidian_distance(waypoint.transform.location, goal_point))
+                self.distance_memory = distance1 + self.uclidian_distance(waypoint.transform.location, goal_point)
+
+
+                # self.world.debug.draw_string(carla.Location(x=172.776093, y=-368.031677, z=0.000000),'o', draw_shadow=True, color=carla.Color(r=255, g=255, b=255), life_time=999)
+                # self.world.debug.draw_string(carla.Location(x=182.776093, y=-368.031677, z=0.000000),'o', draw_shadow=True, color=carla.Color(r=255, g=255, b=255), life_time=999)
+            # if self.index == 8:
+            #     print()
+            #     print("goal_point:", goal_point)
+            #     print("wayhpoint:", waypoint.transform.location)
+            #     self.world.debug.draw_string(waypoint.transform.location, 'o', draw_shadow=True,
+            #                                  color=carla.Color(r=0, g=255, b=255), life_time=999)
+            #     self.world.debug.draw_string(goal_point, 'o', draw_shadow=True, color=carla.Color(r=255, g=255, b=255),
+            #                                  life_time=999)
+            #     print("asdfasdf:", self.distance_memory)
+            #     self.world.debug.draw_string(starting_waypoint.next(self.distance_memory)[0].transform.location, 'o',
+            #                                  draw_shadow=True, color=carla.Color(r=0, g=0, b=255), life_time=999)
+            return self.distance_memory
+
 
     # def asdf(self,first_lane_waypoint):
     #     if first_lane_waypoint is not None:
@@ -1026,9 +1096,9 @@ class CarlaEnv():
     #
     #     return first_lane_waypoint
 
-    def \
-            get_waypoint_of_first_lane(self,actor):
-        first_lane_waypoint = self.map.get_waypoint(actor.get_transform().location,
+
+    def get_waypoint_of_first_lane(self,actor):
+        first_lane_waypoint = self.map.get_waypoint(actor.get_location(),
                                                    lane_type=carla.LaneType.Driving)  # self.controller.waypoint
 
         if first_lane_waypoint is not None:
@@ -1047,6 +1117,25 @@ class CarlaEnv():
             return False
 
         return first_lane_waypoint
+
+    def get_waypoint_of_n_th_lane(self,actor,n):
+        n_lane_waypoint = self.map.get_waypoint(actor.get_location(),
+                                                   lane_type=carla.LaneType.Driving)  # self.controller.waypoint
+        if n_lane_waypoint is not None:
+            while abs(n_lane_waypoint.lane_id) != n:
+                if abs(n_lane_waypoint.lane_id) > n:
+                    n_lane_waypoint = n_lane_waypoint.get_left_lane()
+                elif abs(n_lane_waypoint.lane_id) < n:
+                    n_lane_waypoint = n_lane_waypoint.get_right_lane()
+
+                if n_lane_waypoint is None:
+                    return False
+
+        else:
+            print("getting first lane false2")
+            return False
+
+        return n_lane_waypoint
 
     def get_waypoint_of_last_lane(self,actor):
         last_lane_waypoint = self.map.get_waypoint(actor.get_transform().location, lane_type=carla.LaneType.Driving)  # self.controller.waypoint
@@ -1167,115 +1256,56 @@ class CarlaEnv():
         plot = sns.heatmap(data, xticklabels=ay)
         plt.show()
 
-    def search_distance_valid(self):
+    def search_distance_valid(self,max_Lane_num):
+        """
+        distance_memory 's value where
+        """
         # index= 4-self.ego_Lane
         # print("index :", index)
 
-        last_lane_waypoint = self.get_waypoint_of_last_lane(self.player)
-        if last_lane_waypoint == False:
+        third_lane_waypoint = self.get_waypoint_of_n_th_lane(self.player,4)
+        if third_lane_waypoint == False:
             return None
 
+        # print(self.index, self.max_Lane_num, self.pre_max_Lane_num, self.section)
         # print(self.ego_Lane)
         if self.max_Lane_num != self.pre_max_Lane_num:
-            if self.index == len(self.lane_change_point) - 1:
+            if self.index >= len(self.lane_change_point):
                 self.index = 0
+                # self.section = 0
             else:
-                if self.index == 8 and self.distance_memory is None:  # it needs because of bug
-                    pass
-                else:
-                    self.index += 1
+                self.index += 1
+                # self.section = int(self.index / 2)
+                # if self.index == 8 :
+                #     print("aa")
+                # if self.index == 8 and self.distance_memory is None:  # it needs because of bug
+                #     pass
+                # else:
+
                 # if self.distance_memory is None or abs(self.distance_memory) <=20:
 
-                self.pre_max_Lane_num = self.max_Lane_num
+            self.pre_max_Lane_num = self.max_Lane_num
+        if self.index >= len(self.lane_change_point):
+            self.index = 0
         # if self.index ==9: #bug not fixed completely. this is just a quick fix.
         #     self.index = 8
 
         # print(self.index)
-        if self.index % 2 == 0:
-            distance = self.get_distance_from_waypoint_to_goal_point(last_lane_waypoint,
-                                                                     self.lane_change_point[self.index])
-            if distance == False:
+        third_goal_waypoint = self.map.get_waypoint(self.lane_change_point[self.index], lane_type=carla.LaneType.Driving)
+        # print("start")
+        if self.index % 2 == 0: # even index = start point
+            distance = self.get_distance_from_waypoint_to_goal_point(third_lane_waypoint, third_goal_waypoint.transform.location)
+            if distance == False or distance == None:
                 return None
+            if distance <0:
+                self.distance_memory = None
+                distance = self.uclidian_distance(third_lane_waypoint.transform.location, self.lane_change_point[self.index+1])
+                return -distance
             return distance
         else:
             self.distance_memory = None
-            distance = self.uclidian_distance(last_lane_waypoint.transform.location, self.lane_change_point[self.index])
-
+            distance = self.uclidian_distance(third_lane_waypoint.transform.location, self.lane_change_point[self.index])
             return -distance
-
-            # if self.max_Lane_num ==4:
-            #         while search_raidus <= distance:
-            #             pre_distance = distance
-            #             # distance = ((forth_lane_waypoint.next(i)[0].x-self.lane_start_point.x)**2+(forth_lane_waypoint.next(i)[0].y-self.lane_start_point.y)**2+(forth_lane_waypoint.next(i)[0].z-self.lane_start_point.z)**2)**0.5
-            #             distance = ((forth_lane_waypoint.next(i)[0].transform.location.x-self.lane_start_point[self.section].x)**2+(forth_lane_waypoint.next(i)[0].transform.location.y-self.lane_start_point[self.section].y)**2+(forth_lane_waypoint.next(i)[0].transform.location.z-self.lane_start_point[self.section].z)**2)**0.5
-            #
-            #             # print("distance :",distance , "i :", i)
-            #             if pre_distance <= distance:
-            #                 print("pre_distance <= distance error")
-            #                 break
-            #             elif round(distance - search_raidus) > 0:
-            #                 i += round(distance - search_raidus)
-            #             else:
-            #                 return min(distance + i, self.ROI_length)
-            #             # print("i updated :", i)
-            #         # self.max_Lane_num =3
-            # elif self.max_Lane_num == 3:
-            #     while search_raidus <= distance:
-            #         distance = ((forth_lane_waypoint.next(i)[0].transform.location.x - self.lane_finished_point[
-            #             self.section].x) ** 2 + (forth_lane_waypoint.next(i)[0].transform.location.y -
-            #                                      self.lane_finished_point[self.section].y) ** 2 + (
-            #                             forth_lane_waypoint.next(i)[0].transform.location.z -
-            #                             self.lane_finished_point[self.section].z) ** 2) ** 0.5
-
-            #         if pre_distance <= distance:
-            #             print("pre_distance <= distance error")
-            #             break
-            #         elif round(distance - search_raidus) > 0:
-            #             i += round(distance - search_raidus)
-            #         else:
-            #             return min(distance + i, self.ROI_length)
-            #
-            #         if round(distance - search_raidus) > 0:
-            #             i += round(distance - search_raidus)
-            #         else:
-            #             return max(-(distance + i), -self.ROI_length)
-
-    ## rule-based condition for lane change##
-    # def can_lane_change(self,decision,state):
-    #
-    #     """
-    #
-    #     :param decision:
-    #     :param state:  state_dyn = [dr/self.ROI_length, dv, length, self.extra_dl_list[x]]
-    #     :return:
-    #     """
-    #     self.spawn_waypoint = self.map.get_waypoint(self.player.get_location(),lane_type=carla.LaneType.Driving)
-    #     self.safe_lane_change_distance = int(self.controller.velocity/3.0+10.0)
-    #     result = True
-    #
-
-    #
-    #     if decision ==0:
-    #         # print("tried strait in safety check")
-    #         return True
-    #     for i, state_dyn in enumerate(state):
-    #
-    #         if state_dyn[3] == decision:
-    #             if state_dyn[0] >= 0.0 and state_dyn[0] <= self.safe_lane_change_distance:
-    #                 print("not enough side front distance")
-    #                 return False
-    #             elif state_dyn[0] <= 0.0 and state_dyn[1] <= 0.0 and abs(state_dyn[0]) <= self.safe_lane_change_distance:
-    #                 print("not enough behind distance")
-    #                 return False
-    #             elif state_dyn[0] <= 0 and abs(state_dyn[0]) <= self.safe_lane_change_distance/2.0:
-    #                 print("not enough behind distance")
-    #                 return False
-    #         elif state_dyn[3] == 0:
-    #
-    #             if state_dyn[0] > 0.0 and state_dyn[0]  <= self.safe_lane_change_distance:
-    #                 print("not engouth leading distance")
-    #                 return False
-    #     return True
 
     def loose_safety_check(self,decision,safe_lane_change_again_time = 2.5):
         # min time interval for lane change
@@ -1503,7 +1533,7 @@ class CarlaEnv():
             # self.world.debug.draw_string(self.controller.my_location_waypoint.previous( self.controller.safe_distance / 6 - dv)[0].transform.location,
             #                              'o', draw_shadow=True,
             #                              color=carla.Color(r=255, g=255, b=255), life_time=0.1)
-        print("3")
+        # print("3")
         return True
 
 
@@ -1631,9 +1661,9 @@ class CarlaEnv():
 
             if leading_vel <= target_vel:
                 if self.is_safe_action(1):
-                    self.deicison =self.loose_safety_check(1)
+                    self.deicison = self.loose_safety_check(1)
                 elif self.is_safe_action(-1):
-                    self.deicison =self.loose_safety_check(-1)
+                    self.deicison = self.loose_safety_check(-1)
                 else:
                     self.decision = 0
 
@@ -1676,61 +1706,39 @@ class CarlaEnv():
         """
         :param invalid_distances: int type list
         :return: thsi function change the variable, self.section and self.max_Lane_num
-        condition : It returns a not properly computed value if a 'U' curve lane exists
-                    in this case, it needs a vortual point
         """
-        agent_cur_pos = self.player.get_transform().location
-        if self.section < len(invalid_distances):
-
-            self.lane_distance_between_start = self.uclidian_distance(agent_cur_pos,self.lane_start_point[self.section])
-
-            self.lane_distance_between_end = self.uclidian_distance(agent_cur_pos,self.lane_finished_point[self.section])
-
-            # print("self.lane_distance_between_start : ",self.lane_distance_between_start,"self.lane_distance_between_end :",self.lane_distance_between_end, "lane_distance_between_points[section]",lane_distance_between_points[self.section],"section :", self.section)
-            if max(invalid_distances[self.section], self.lane_distance_between_start, self.lane_distance_between_end) == \
-                    invalid_distances[self.section]:
-
-                self.max_Lane_num = 3
 
 
+        # print(aa," ", bb)
 
-            elif max(invalid_distances[self.section], self.lane_distance_between_start, self.lane_distance_between_end) == \
-                    self.lane_distance_between_start and self.max_Lane_num == 3:
+        if (self.distance_memory is None or self.distance_memory <0) and self.iter > 1:
+            self.max_Lane_num = 3
+        else:
+            self.max_Lane_num = 4
 
-                self.section += 1
-                self.max_Lane_num = 4
-                # if virtual_point is None:
-                if self.section > len(invalid_distances):
-                    self.section = 0
-
-                if self.section ==4:
-                    self.max_Lane_num = 4
-
+        # if self.section >= len(invalid_distances): #len((invalid_distances) = 5
+        #     self.section = 0
 
         # else:
             # distance = math.hypot(virtual_point.x-agent_cur_pos.x,virtual_point.y-agent_cur_pos.y)
 
     def visualize_virtual_invalid_forth_lane(self):
-        for i in range(1,220,6):
-            tmp = self.spawn_waypoint.next(2820)[0].get_right_lane().get_right_lane().next(i)
-            if len(tmp)>1:
-                waypoint = tmp[1]
-            else:
-                waypoint = tmp[0]
+        for i in range(5):
+            self.world.debug.draw_string(self.lane_start_point[i],
+                                         'o', draw_shadow=True,
+                                         color=carla.Color(r=255, g=255, b=0), life_time=9999)
+            self.world.debug.draw_string(self.lane_finished_point[i],
+                                         'o', draw_shadow=True,
+                                         color=carla.Color(r=255, g=255, b=0), life_time=9999)
 
+        # tmp = self.map.get_waypoint(self.lane_finished_point[3], lane_type=carla.LaneType.Driving).next(1340)[0].transform.location
+        # self.world.debug.draw_string(tmp,'o', draw_shadow=True, color=carla.Color(r=255, g=255, b=255), life_time=9999)
 
-
-        for i in range(1,300):
-            tmp = self.spawn_waypoint.next(1180)[0].get_right_lane().get_right_lane().next(i)
-            if len(tmp)>1:
-                waypoint = tmp[1]
-            else:
-                waypoint = tmp[0]
 
     def main_test(self):
         simul_start_time = time.time()
         print(torch.cuda.get_device_name())
-        clock = pygame.time.Clock()
+        # clock = pygame.time.Clock()
         Keyboardcontrol = KeyboardControl(self, False)
         # display = pygame.display.set_mode(
         #     (self.width, self.height),
@@ -1740,19 +1748,9 @@ class CarlaEnv():
         blueprints = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
         blueprint = random.choice(blueprints)
 
-        # for aa in self.lane_start_point:-
-        #     tmp=self.map.get_waypoint(aa, lane_type=carla.LaneType.Driving).next(1)[0]
-        #     self.world.debug.draw_string(aa, 'o', draw_shadow=True,color=carla.Color(r=255, g=0, b=0), life_time=999)
-        self.visualize_virtual_invalid_forth_lane()
-
-        self.lane_change_point =[] #[carla.Location(x=14.905815, y=-135.747452, z=0.000000),carla.Location(x=14.631096, y=-205.746918, z=0.000000),carla.Location(x=172.745468, y=-364.531799, z=0.000000) ,carla.Location(x=232.962860, y=-364.149139, z=0.000000), carla.Location(x=382.441040, y=-212.488907, z=0.000000),carla.Location(x=376.542816, y=-10.352980, z=0.000000)]
-        for i in range(len(self.lane_start_point)):
-            self.lane_change_point.append(self.lane_start_point[i])
-            self.lane_change_point.append(self.lane_finished_point[i])
-
-        lane_distance_between_points = []
-        for i in range(len(self.lane_finished_point)):
-            lane_distance_between_points.append(self.uclidian_distance(self.lane_start_point[i],self.lane_finished_point[i]))
+        # for i in range(1,4000):
+        #     tmp=self.map.get_waypoint(self.player.get_location(), lane_type=carla.LaneType.Driving).next(i)[0].get_right_lane().transform.location
+        #     self.world.debug.draw_string(tmp, 'o', draw_shadow=True,color=carla.Color(r=255, g=0, b=0), life_time=999)
 
             # ((self.lane_start_point[i].x - self.lane_finished_point[i].x) ** 2 + (
             #         self.lane_start_point[i].y - self.lane_finished_point[i].y) ** 2 + (
@@ -1768,15 +1766,20 @@ class CarlaEnv():
             # waypoint = tmp[0]
 
         pre_decision = None
+        # d = self.search_distance_valid()
+        self.get_next_state(0)
+
         while True:
+
+            self.iter+=1
             # print("right:",self.mobil_lane_change(self.player,1))
             # print("left:",self.mobil_lane_change(self.player,-1))
-            if self.mobil_lane_change(self.player,1):
-                self.decision = 1
-            elif self.mobil_lane_change(self.player,-1):
-                self.decision = -1
-            else:
-                self.decision = 0
+            # if self.mobil_lane_change(self.player,1):
+            #     self.decision = 1
+            # elif self.mobil_lane_change(self.player,-1):
+            #     self.decision = -1
+            # else:
+            #     self.decision = 0
 
             # self.world.debug.draw_string(self.extra_list[0].get_transform().location,
             #                              'o', draw_shadow=True,
@@ -1809,6 +1812,7 @@ class CarlaEnv():
             self.spectator.set_transform(
                 carla.Transform(self.player.get_transform().location + carla.Location(z=200),
                                 carla.Rotation(pitch=-90)))
+
             # self.camera_rgb.render(display)
             # self.hud.render(display)
             # pygame.display.flip()
@@ -1819,8 +1823,8 @@ class CarlaEnv():
             ## Get max lane ##
             # print("start get lane")
 
-            self.get_max_lane(lane_distance_between_points)
-            d = self.search_distance_valid()
+            # d = self.search_distance_valid()
+
 
             # print("d:", d, "section:", self.section, "index", self.index, "max_lane", self.max_Lane_num)
 
@@ -1865,18 +1869,28 @@ class CarlaEnv():
             #     self.decision = 0
             # self.get_mobil_vel :input()
             # if self.mobil() == True:
-
+            print("distance memory:", self.distance_memory)
 
             self.controller.apply_control(self.decision)
 
+            tmp = self.step(0)
+
             # self.step(self.decision)
-            if self.is_side_safe(1) == True:
-                print("1")
-                self.decision = 1
-            elif self.is_side_safe(-1) == True:
-                print("-1")
-                self.decision = -1
-            clock.tick(40)
+            # if self.is_side_safe(1) == True:
+            #     print("1")
+            #     self.decision = 1
+            # elif self.is_side_safe(-1) == True:
+            #     print("-1")
+            #     self.decision = -1
+            # clock.tick()
+            for extra_actor in self.extra_list:
+                if extra_actor.is_at_traffic_light():
+                    traffic_light = extra_actor.get_traffic_light()
+                    if traffic_light is not None and traffic_light.get_state() == carla.TrafficLightState.Red:
+                        # world.hud.notification("Traffic light changed! Good to go!")
+                        traffic_light.set_state(carla.TrafficLightState.Green)
+            self.world.tick()
+
 
             # self.hud.tick(self, clock)
 
@@ -1902,7 +1916,6 @@ class CarlaEnv():
         #     print(var_name, "\t", self.agent.optimizer.state_dict()[var_name])
 
 
-        self.visualize_virtual_invalid_forth_lane()
         self.lane_change_point = []
 
         previous_reward = None
@@ -1912,11 +1925,6 @@ class CarlaEnv():
             self.lane_change_point.append(self.lane_finished_point[i])
         # for x in self.lane_change_point:
         #     self.world.debug.draw_string(x, 'o', draw_shadow=True, color=carla.Color(r=0, g=255, b=0), life_time=9999)
-
-        lane_distance_between_points = []
-        for i in range(len(self.lane_finished_point)):
-            lane_distance_between_points.append(self.uclidian_distance(self.lane_start_point[i],self.lane_finished_point[i]))
-
 
         epoch = 0
         device = torch.device('cuda')
@@ -1982,11 +1990,6 @@ class CarlaEnv():
                 self.spectator.set_transform(carla.Transform(self.player.get_transform().location + carla.Location(z=200),
                                     carla.Rotation(pitch = -90)))
 
-                ## Get max lane ##
-                self.get_max_lane(lane_distance_between_points)
-                # if self.pre_max_Lane_num!= self.max_Lane_num:
-                #     print(self.max_Lane_num)
-
                 ## finished get max lane ##
                 ##visualize when, max lane ==3 ##
 
@@ -2037,11 +2040,10 @@ class CarlaEnv():
 
                     if self.decision != 0:
                         self.check += 1
-
                     if self.decision_changed:
                         self.check2 += 1
-                    if self.decision!=0:
-                        self.check2 +=1
+                    if self.decision != 0:
+                        self.check2 += 1
 
 
                     # print("before:", before_safety_decision)
@@ -2172,8 +2174,8 @@ class CarlaEnv():
                             for i in range(int(n)):
                                 self.agent.ddqn_learning()
                                 self.acummulated_loss += self.agent.loss
-                            self.scenario = "validation"
-                            self.agent.is_training = False
+                            # self.scenario = "validation"
+                            # self.agent.is_training = False
                             writer.add_scalar('Loss', self.acummulated_loss / n, epoch)
                             writer.add_scalar('랜덤 시나리오 누적보상', self.accumulated_reward , epoch)
                             self.agent.update_epsilon()

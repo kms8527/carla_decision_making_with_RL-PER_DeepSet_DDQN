@@ -564,3 +564,4 @@ class DeepSet_D3QN(nn.Module):
         out = val + adv - adv.mean(1,keepdim=True).expand(-1,adv.size(1))
         # out = self.softmax(out)
         return out
+

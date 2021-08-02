@@ -66,6 +66,11 @@ class Pure_puresuit_controller:
         self.error_v_dot = 0
         self.error_v_int = 0
 
+        self.error_a_pre = 0
+        self.error_a = 0
+        self.error_a_dot = 0
+        self.error_a_int = 0
+
         self.leading_distance_pre = 0
         self.leading_distance = 0
         self.leading_distance_dot = 0
@@ -92,7 +97,7 @@ class Pure_puresuit_controller:
         self.left_search_radius = None
         self.right_search_radius = None
         # self.integral = 0
-        self.a = 0
+        self.throttle = 0
         self.y_ini = 0
         self.steer = 0
         self.h_constant = 1.3
@@ -247,7 +252,7 @@ class Pure_puresuit_controller:
                 # print("종방향 돔")
             self.error = [self.error_v, self.error_v_dot, self.error_v_int]
             # print("V error : " ,self.error[0])
-            self.a = self.k_v[0] * self.error[0] + self.k_v[1] * self.error[1] + self.k_v[2] * self.error[2]
+            self.throttle = self.k_v[0] * self.error[0] + self.k_v[1] * self.error[1] + self.k_v[2] * self.error[2]
 
             self.control_input()
         else:
@@ -383,16 +388,16 @@ class Pure_puresuit_controller:
 
 
     def control_input(self):
-        if self.a>=0:
-            self.a =min(self.a,1)
-            self.player.apply_control(carla.VehicleControl(throttle=self.a, steer=self.steer, brake=0.0))
+        if self.throttle>=0:
+            self.throttle =min(self.throttle,1)
+            self.player.apply_control(carla.VehicleControl(throttle=self.throttle, steer=self.steer, brake=0.0))
             # print("self.a:", self.a)
             # print("self.accel:", (self.player.get_acceleration().x**2+self.player.get_acceleration().y**2+self.player.get_acceleration().z**2)**0.5)
             # print("self.vel:",(self.player.get_velocity().x**2+self.player.get_velocity().y**2+self.player.get_velocity().z**2)**0.5)
 
 
         else:
-            b = -self.a
+            b = -self.throttle
             b = min(b, 1)
             self.player.apply_control(carla.VehicleControl(throttle=0, steer=self.steer, brake=b))
 
@@ -426,10 +431,16 @@ class Pure_puresuit_controller:
         else:
             sign = -1
 
-        self.a = x_des_ddot
         current_accel =sign* (accel_x**2+accel_y**2+ accel_z**2)**0.5
-        error = x_des_ddot- current_accel
-
+        self.error_a = x_des_ddot - current_accel
+        self.error_a_dot = (self.error_a - self.error_a_pre)/dt
+        # self.error_a_int += self.error_a * dt
+        self.error_a_pre = self.error_a
+        # [0.5, -0.004, 0.003]
+        p=0.3
+        i=-0.004
+        d=0.003
+        self.throttle = p* self.error_a + d*self.error_a_dot
         # print(error)
 
         # t= time.time()- self.acc_start_time
