@@ -12,7 +12,7 @@ import sys
 # except IndexError:
 #     pass
 # import cv2
-
+import argparse
 import carla
 import math
 from sensor_class import *
@@ -23,13 +23,14 @@ from HUD import HUD
 # import MPCController
 from Controller import *
 from decision_trainer import *
+from actor_critic_trainer import *
 import logging
 from torch.utils.tensorboard import SummaryWriter
 import torch
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pyautogui
-writer = SummaryWriter('runs/Jul07_16-15-29_a')#'runs/Jul06_11-16-43_a')#runs/May10_08-05-04_a')#runs/May09_13-35-46_a')
+writer = SummaryWriter('runs/Aug10_00-30-13_a')#'runs/Aug09_22-34-15_a')#'runs/Jul06_11-16-43_a')#runs/May10_08-05-04_a')#runs/May09_13-35-46_a')
 # from agents.navigation.roaming_agent import RoamingAgent
 # from agents.navigation.basic_agent import BasicAgent
 
@@ -52,6 +53,12 @@ except ImportError:
     import Queue as queue
 
 
+# arg = argparse.ArgumentParser()
+# arg.add_argument('--nn_name',default="ppo", type = str, required=True)
+# args = arg.parse_args()
+penalty = -1
+
+
 class CarlaEnv():
     pygame.init()
     font = pygame.font.init()
@@ -61,6 +68,8 @@ class CarlaEnv():
         device = torch.device(f'cuda:{GPU_NUM}' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(device)  # change allocation of current GPU
 
+        self.nn_name = ""
+        self.action_prob_list = []
         self.safety_mode = True
         self.safety_mode2 = False
         self.mission_mode = False
@@ -172,12 +181,13 @@ class CarlaEnv():
         for i in range(len(self.lane_finished_point)):
             self.lane_distance_between_points.append(self.uclidian_distance(self.lane_start_point[i],self.lane_finished_point[i]))
 
-        self.visualize_virtual_invalid_forth_lane()
+        # self.visualize_virtual_invalid_forth_lane()
 
         self.restart()
         self.main()
 
     def restart(self):
+        self.action_prob_list = []
         self.is_lane_out = False
         self.actor_pos = None
         # self.check = 0
@@ -273,7 +283,7 @@ class CarlaEnv():
         # self.actor_list.append(self.gnss_sensor.sensor)
 
         self.spectator.set_transform(
-            carla.Transform(self.player.get_transform().location + carla.Location(z=130),
+            carla.Transform(self.player.get_transform().location + carla.Location(z=200),
                             carla.Rotation(pitch=-90)))
 
         # --------------
@@ -759,26 +769,26 @@ class CarlaEnv():
                 done = True
                 print("collision")
                 self.collision_num +=1
-                reward = -10
+                reward = penalty
             elif decision == 1 and pre_ego_lane >= self.max_Lane_num:  # dont leave max lane
                 done = True
                 self.is_lane_out = True
                 self.right_col_num +=1
                 print("lane right collision")
-                reward = -10
+                reward = penalty
             elif decision == -1 and pre_ego_lane <= 1:  # dont leave min lane
                 done = True
                 self.left_col_num +=1
                 self.is_lane_out = True
                 print("lane left collision")
-                reward = -10
+                reward = penalty
             elif next_x_static[2] < 0 and self.ego_Lane > self.max_Lane_num :
                 done = True
                 self.exit_lane_col_num +=1
                 self.is_lane_out = True
                 # print("ego_Lane",self.ego_Lane,"mam lane",self.max_Lane_num)
                 print("Agent get into exit, Done")
-                reward = -10
+                reward = penalty
             else:
                 reward = (1-1*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))**3-plc
                 # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
@@ -787,26 +797,26 @@ class CarlaEnv():
                 done = True
                 print("collision")
                 self.collision_num +=1
-                reward = -10
+                reward = penalty
             elif decision == 1 and pre_ego_lane >= self.max_Lane_num:  # dont leave max lane
                 done = True
                 self.is_lane_out = True
                 self.right_col_num +=1
                 print("lane right collision")
-                reward = -10
+                reward = penalty
             elif decision == -1 and pre_ego_lane <= 1:  # dont leave min lane
                 done = True
                 self.left_col_num +=1
                 self.is_lane_out = True
                 print("lane left collision")
-                reward = -10
+                reward = penalty
             elif next_x_static[2] < 0 and self.ego_Lane > self.max_Lane_num :
                 done = True
                 self.exit_lane_col_num +=1
                 self.is_lane_out = True
                 # print("ego_Lane",self.ego_Lane,"mam lane",self.max_Lane_num)
                 print("Agent get into exit, Done")
-                reward = -10
+                reward = penalty
             else:
                 reward = (1-1*abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))**3-plc
                 # print(abs(self.controller.desired_vel-self.controller.velocity)/(self.controller.desired_vel))
@@ -902,6 +912,7 @@ class CarlaEnv():
         self.max_Lane_num = self.check_max_lane(self.actor_pos, self.lane_start_point,self.lane_finished_point)
 
         lane_valid_distance = self.search_distance_valid(self.max_Lane_num)
+        # print(lane_valid_distance)
         if lane_valid_distance is None:
             return None
         # else: ## for debug
@@ -1049,12 +1060,14 @@ class CarlaEnv():
             return self.distance_memory
 
         else:
+            aa = time.time()
             while self.uclidian_distance(waypoint.transform.location, goal_point) >= 2 * step:
                 if len(waypoint.next(step)) == 0:
                     return False
                 waypoint = waypoint.next(step)[0]
                 distance1 += step
-
+                if distance1 >=100000:
+                    return False
                 # print(waypoint.transform.location)
                 # print(goal_point)
                 # print(self.uclidian_distance(waypoint.transform.location, goal_point))
@@ -1354,7 +1367,6 @@ class CarlaEnv():
             # print("now:", self.can_lane_change)
             # print("------------")
 
-
         else:
             self.pre_can_lane_change = self.can_lane_change
             self.can_lane_change = False
@@ -1382,12 +1394,22 @@ class CarlaEnv():
             elif self.agent.selection_method == 'random' and decision == 1 and self.ego_Lane >= self.max_Lane_num-0.5: #dont leave max lane
                 # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
                 self.decision_changed = True
-                action = random.randrange(-1,1)
+                if self.nn_name == 'ppo':
+                    new_action_list = torch.tensor(self.action_prob_list[:(self.decision+1)])
+                    c = Categorical(new_action_list)
+                    action = c.sample().item()
+                else:
+                    action = random.randrange(-1,1)
 
             elif self.agent.selection_method == 'random' and decision == -1 and self.ego_Lane <=1.5: #dont leave min lane
                 # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
                 self.decision_changed = True
-                action = random.randrange(0, 2)
+                if self.nn_name == 'ppo':
+                    new_action_list = torch.tensor(self.action_prob_list[(self.decision+2):])
+                    c = Categorical(new_action_list)
+                    action = c.sample().item()
+                else:
+                    action = random.randrange(0, 2)
 
             elif  self.agent.selection_method == 'max' and self.ego_Lane >= self.max_Lane_num-0.5 and decision == 1:
                 # print("ego_lane:",self.ego_Lane, "max_lane:",self.max_Lane_num, "decision:", self.decision)
@@ -1466,8 +1488,22 @@ class CarlaEnv():
 
             elif self.agent.selection_method == 'random' and self.is_safe_action(decision)==False:
                 self.decision_changed = True
-                while self.is_safe_action(action) == False:
-                    action = random.randrange(-1,2)
+                if self.nn_name == 'ppo':
+                    if action == 1:
+                        new_action_list = torch.tensor(self.action_prob_list[:(action + 1)])
+                        c = Categorical(new_action_list)
+                        action = c.sample().item()
+                        if self.is_safe_action(action) == False:
+                            action = 0
+                    elif action == -1:
+                        new_action_list = torch.tensor(self.action_prob_list[(action + 2):])
+                        c = Categorical(new_action_list)
+                        action = c.sample().item()
+                        if self.is_safe_action(action) == False:
+                            action = 0
+                else:
+                    while self.is_safe_action(action) == False:
+                       action = random.randrange(-1,2)
 
             if action != 0:# and self.can_lane_change(action,state):
                 self.lane_change_time = time.time()
@@ -1730,6 +1766,10 @@ class CarlaEnv():
             self.world.debug.draw_string(self.lane_finished_point[i],
                                          'o', draw_shadow=True,
                                          color=carla.Color(r=255, g=255, b=0), life_time=9999)
+            for j in range(1,100):
+                self.world.debug.draw_string(((100-j)*self.lane_start_point[i]+self.lane_finished_point[i]*j)/100,
+                                             'o', draw_shadow=True,
+                                             color=carla.Color(r=0, g=0, b=255), life_time=9999)
 
         # tmp = self.map.get_waypoint(self.lane_finished_point[3], lane_type=carla.LaneType.Driving).next(1340)[0].transform.location
         # self.world.debug.draw_string(tmp,'o', draw_shadow=True, color=carla.Color(r=255, g=255, b=255), life_time=9999)
@@ -1869,7 +1909,7 @@ class CarlaEnv():
             #     self.decision = 0
             # self.get_mobil_vel :input()
             # if self.mobil() == True:
-            print("distance memory:", self.distance_memory)
+            # print("distance memory:", self.distance_memory)
 
             self.controller.apply_control(self.decision)
 
@@ -1895,15 +1935,17 @@ class CarlaEnv():
             # self.hud.tick(self, clock)
 
     def main(self):
-
-        PATH = "/home/a/version_2_per_deepset/"
+        PATH = "/home/a/deepset-Q/"
         print(torch.cuda.get_device_name())
         clock = pygame.time.Clock()
         Keyboardcontrol = KeyboardControl(self, False)
         # display = pygame.display.set_mode(
         #     (self.width, self.height),
         #     pygame.HWSURFACE | pygame.DOUBLEBUF)
-        self.agent = decision_driving_Agent(self.input_size,self.output_size,True,1000,self.extra_num,self.controller)
+        if self.nn_name == "ppo":
+            self.agent = PPO(self.input_size,3,self.output_size,self.extra_num,writer)
+        else:
+            self.agent = decision_driving_Agent(self.input_size,self.output_size,True,1000,self.extra_num,self.controller)
 
         # # 모델의 state_dict 출력
         # print("Model's state_dict:")
@@ -1929,20 +1971,29 @@ class CarlaEnv():
         epoch = 0
         device = torch.device('cuda')
 
-        load_dir = PATH+'trained_info4123084.pt'
-        if(os.path.exists(load_dir)):
+        load_dir = PATH+'safe_train_info100.pt'
+        if self.nn_name == "ppo":
+            if (os.path.exists(load_dir)):
+                print("저장된 deepset-PPO 가중치 불러옴")
 
-            print("저장된 가중치 불러옴")
-            checkpoint = torch.load(load_dir)
-            self.agent.model.load_state_dict(checkpoint['model_state_dict'])
-            self.agent.model.to(device)
-            self.agent.target_model.load_state_dict((checkpoint['target_model_dict']))
-            self.agent.target_model.to(device)
-            self.agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            self.agent.buffer.buffer = checkpoint['data']
-            # self.agent.buffer.buffer = checkpoint['memorybuffer']
-            epoch = checkpoint['epoch']
-            self.agent.epsilon = checkpoint['epsilon']
+                checkpoint = torch.load(load_dir)
+                self.agent.deepset.load_state_dict(checkpoint['deepset_dict'])
+                self.agent.model.load_state_dict(checkpoint['actor_dict'])
+                self.agent.critic_net.load_state_dict(checkpoint['critic_dict'])
+                epoch = checkpoint['epoch']
+        else:
+            if(os.path.exists(load_dir)):
+                print("저장된 deepset-Q 가중치 불러옴")
+                checkpoint = torch.load(load_dir)
+                self.agent.model.load_state_dict(checkpoint['model_state_dict'])
+                self.agent.model.to(device)
+                self.agent.target_model.load_state_dict((checkpoint['target_model_dict']))
+                self.agent.target_model.to(device)
+                self.agent.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                self.agent.buffer.buffer = checkpoint['data']
+                # self.agent.buffer.buffer = checkpoint['memorybuffer']
+                epoch = checkpoint['epoch']
+                self.agent.epsilon = checkpoint['epsilon']
 
         # print("h")
         if self.mission_mode == True:
@@ -2029,12 +2080,19 @@ class CarlaEnv():
                         self.decision = 0
                         # print(0)
                     else:
-                        self.decision= self.agent.act(state, x_static)
+                        if self.nn_name == 'ppo':
+                            self.decision, action_prob, self.action_prob_list = self.agent.act(state, x_static)
+                        else:
+                            self.decision= self.agent.act(state, x_static)
 
-                    before_safety_decision = self.decision
+                    if self.nn_name == 'ppo':
+                        before_safety_decision = self.decision
+                        before_action_prob = self.action_prob_list[self.decision+1]
+                    else:
+                        before_safety_decision = self.decision
 
                     if self.safety_mode == True:
-                        self.decision = self.safety_check(self.decision)
+                        self.decision = self.safety_check2(self.decision)
                     else:
                         self.decision = self.loose_safety_check(self.decision)
 
@@ -2074,6 +2132,7 @@ class CarlaEnv():
 
                     else:
                         [__, _, decision, reward, next_state, next_x_static, done] =  tmp
+
                         # if self.check == 1:
                         #     sample = [state, x_static, self.decision, reward, next_state, next_x_static, done]
                         #     # self.plot_state_action(sample)
@@ -2084,7 +2143,8 @@ class CarlaEnv():
                         # x_static[0] = self.current_ego_lane
                         # info = [state, x_static]
                         # if no collision no data stored in buffer
-
+                        if self.nn_name =="ppo":
+                            epoch += 1
                         f = open("/home/a/version_2_per_deepset/data/lane_change_num.txt", 'a')
                         # 시나리오 반복 횟수, 미션 성공수    , 소요 시간,      평균 속도, 	차선 변경 횟수,	   left, 	    right,    exit colision   vehicle collision  퍙군속도 구하는데 들어간 iteration 수
                         data_list = [epoch, self.check]
@@ -2094,68 +2154,77 @@ class CarlaEnv():
                         f.write("\n")
                         f.close()
 
-                        if len(self.collision_sensor.history) != 0:
+                        if len(self.collision_sensor.history) != 0: #success complete the scenario
                             assert reward is not None, "reward= none"
-                            sample = [decision_state, decision_x_static, self.pre_decision, reward, None, None,
-                                      done]
+                            if self.nn_name == "ppo":
+                                sample = [decision_state, decision_x_static, self.pre_decision, pre_action_prob, reward, None]
+                                self.agent.buffer.append(sample)
+                            else:
+                                sample = [decision_state, decision_x_static, self.pre_decision, reward, None, None, done]
+                                self.agent.buffer.append(sample)
+                                self.agent.memorize_td_error(0)
                             # print("collision:", decision_x_static[0], "decision:", self.pre_decision, "reward",
                             #       reward)
                             # print(sample)
 
-                            self.agent.buffer.append(sample)
-                            self.agent.memorize_td_error(0)
-
-                        elif self.is_lane_out:
-                            sample = [state, x_static, self.decision, reward, None, None,
-                                      done]
-                            self.agent.buffer.append(sample)
-                            self.agent.memorize_td_error(0)
+                        elif self.is_lane_out: # if agent exits lane,
+                            if self.nn_name == "ppo":
+                                sample = [state, x_static, self.decision, action_prob, reward , None]
+                                self.agent.buffer.append(sample)
+                            else:
+                                sample = [state, x_static, self.decision, reward, None, None, done]
+                                self.agent.buffer.append(sample)
+                                self.agent.memorize_td_error(0)
                         ##-------------
                         # if self.side_leading_dr is not None:
-                        #
-                        #     if self.side_leading_dr >= 0:
-                        #         d = self.side_lead_safe_distance
-                        #         x = self.side_leading_dr.item()
-                        #         reward = - 20 / (d ** 3) * x ** 3 + 30 / (d ** 2) * (x ** 2) - 2
-                        #
-                        #     else:
-                        #         d = self.side_back_safe_distance
-                        #         x = abs(self.side_leading_dr.item())
-                        #         reward = -20 / (d ** 3) * x ** 3 + 30 / (d ** 2) * (x ** 2) - 2
-                        #
-                        #     print("dr:",x, "d: ",d, "reward: ",reward)
-                        #
-                        #     sample = [state, x_static, before_safety_decision, reward, None, None, done]
-                        #     self.agent.buffer.append(sample)
-                        #     self.agent.memorize_td_error(0)
-                        ##-------------
 
+                            # if self.side_leading_dr >= 0:
+                            #     d = self.side_lead_safe_distance
+                            #     x = self.side_leading_dr.item()
+                            #     reward = - 20 / (d ** 3) * x ** 3 + 30 / (d ** 2) * (x ** 2) - 2
+                            #
+                            # else:
+                            #     d = self.side_back_safe_distance
+                            #     x = abs(self.side_leading_dr.item())
+                            #     reward = -20 / (d ** 3) * x ** 3 + 30 / (d ** 2) * (x ** 2) - 2
+
+                            # print("dr:",x, "d: ",d, "reward: ",reward)
+                            # if self.nn_name =='ppo':
+                            #     sample = [state, x_static, before_safety_decision, penalty, None]
+                            #     self.agent.buffer.append(sample)
+                            # else:
+                            #     sample = [state, x_static, before_safety_decision, penalty, None, None, done]
+                            #     self.agent.buffer.append(sample)
+                            #     self.agent.memorize_td_error(0)
+                        ##-------------
 
                         elif self.decision_changed:
                             # if x_static[0] <=1.5:+
                             #     print("lane 1 :", before_safety_decision)
                             # elif x_static[lane_change_fin, straight:0]>3.5:
                             #     print("lane 4 :", before_safety_decision)
-
-                            sample = [state, x_static, before_safety_decision, -10, None, None, done]
+                            if self.nn_name == "ppo":
+                                sample = [state, x_static, before_safety_decision, before_action_prob,  penalty, None]
+                                self.agent.buffer.append(sample)
+                            else:
+                                sample = [state, x_static, before_safety_decision, penalty, None, None, done]
                             # print(sample)
 
-                            self.agent.buffer.append(sample)
-                            self.agent.memorize_td_error(0)
+                                self.agent.buffer.append(sample)
+                                self.agent.memorize_td_error(0)
                         # else:
                         #
                         #     self.plot_state_action(sample)
 
-
-
                         print("buffer size : ", len(self.agent.buffer.size()))
-                        n=150.0
 
+                        if self.nn_name != "ppo":
+                            n=150.0
 
-                        self.agent.buffer.plot_buffer(epoch)
+                            self.agent.buffer.plot_buffer(epoch)
 
-                        print("epsilon :", self.agent.epsilon)
-                        print("learning_rate:",self.agent.learning_rate)
+                            print("epsilon :", self.agent.epsilon)
+                            print("learning_rate:",self.agent.learning_rate)
                         # print("epoch : ", epoch, "누적 보상 : ", self.accumulated_reward)
 
                         # if epoch == 50:
@@ -2164,25 +2233,33 @@ class CarlaEnv():
                         #     self.agent.learning_rate/= 0.0001
                         # elif epoch == 500:
                         #     self.agent.learning_rate/= 0.00005
-                        self.agent.update_td_error_memory(epoch)
+                        if self.nn_name != "ppo":
+                            self.agent.update_td_error_memory(epoch)
 
+                        if self.nn_name == 'ppo':
+                            self.agent.update()
+                            writer.add_scalar('mean_actor_loss', self.agent.mean_actor_loss, epoch)
+                            writer.add_scalar('mean_critic_loss',self.agent.mean_critic_loss , epoch)
+                            writer.add_scalar('랜덤 시나리오 누적보상', self.accumulated_reward, epoch)
 
-                        #offline learning
-                        if len(self.agent.buffer.size()) > 2000:#self.agent.batch_size * n:
+                        else:
 
-                            print("start learning")
-                            for i in range(int(n)):
-                                self.agent.ddqn_learning()
-                                self.acummulated_loss += self.agent.loss
-                            # self.scenario = "validation"
-                            # self.agent.is_training = False
-                            writer.add_scalar('Loss', self.acummulated_loss / n, epoch)
-                            writer.add_scalar('랜덤 시나리오 누적보상', self.accumulated_reward , epoch)
-                            self.agent.update_epsilon()
+                            #offline learning
+                            if len(self.agent.buffer.size()) > 2000:#self.agent.batch_size * n:
 
-
-                        if epoch % 10 == 0:
-                            self.agent.target_model.load_state_dict(self.agent.model.state_dict())
+                                print("start learning")
+                                for i in range(int(n)):
+                                        self.agent.ddqn_learning()
+                                        self.acummulated_loss += self.agent.loss
+                                # self.scenario = "validation"
+                                # self.agent.is_training = False
+                                writer.add_scalar('Loss', self.acummulated_loss / n, epoch)
+                                writer.add_scalar('랜덤 시나리오 누적보상', self.accumulated_reward , epoch)
+                                epoch += 1
+                                self.agent.update_epsilon()
+                                print("epoch :", epoch)
+                            if epoch % 10 == 0:
+                                self.agent.target_model.load_state_dict(self.agent.model.state_dict())
 
                         client.set_timeout(10)
                         if self.mission_mode == True:
@@ -2203,27 +2280,32 @@ class CarlaEnv():
                                     # 'memorybuffer': self.agent.buffer.buffer,
                                     'epsilon': self.agent.epsilon},
                                     PATH + "mission_info" + str(epoch) + ".pt")  # +str(epoch)+
-                        if self.safety_mode == True:
-                            if epoch % 1 == 0:
-                                # [w, b] = self.agent.model.parameters()  # unpack parameters
-                                self.save_dir = torch.save({
-                                    'epoch': epoch,
-                                    'model_state_dict': self.agent.model.state_dict(),
-                                    'target_model_dict': self.agent.target_model.state_dict(),
-                                    'optimizer_state_dict': self.agent.optimizer.state_dict(),
-                                    'data': self.agent.buffer.buffer,
-                                    # 'memorybuffer': self.agent.buffer.buffer,
-                                    'epsilon': self.agent.epsilon},
-                                    PATH + "safe_train_info" + str(epoch) + ".pt")  # +str(epoch)+
-
+                        if self.nn_name =='ppo':
+                            self.save_dir = torch.save({
+                            'epoch' : epoch,
+                            'deepset_dict': self.agent.deepset.state_dict(),
+                            'actor_dict': self.agent.model.state_dict(),
+                            'critic_dict': self.agent.critic_net.state_dict(),
+                            }, PATH+"PPO_-1_penalty"+str(epoch)+".pt")
+                        else:
+                            if self.safety_mode == True:
+                                if epoch % 1 == 0:
+                                    # [w, b] = self.agent.model.parameters()  # unpack parameters
+                                    self.save_dir = torch.save({
+                                        'epoch': epoch,
+                                        'model_state_dict': self.agent.model.state_dict(),
+                                        'target_model_dict': self.agent.target_model.state_dict(),
+                                        'optimizer_state_dict': self.agent.optimizer.state_dict(),
+                                        'data': self.agent.buffer.buffer,
+                                        # 'memorybuffer': self.agent.buffer.buffer,
+                                        'epsilon': self.agent.epsilon},
+                                        PATH + "safe_train_info" + str(epoch) + ".pt")  # +str(epoch)+
 
                         self.restart()
                         self.start_epoch = False
                         # self.camera_rgb.toggle_camera()
                         # print("toggle_camera finished")
-
-                    else:
-
+                    else: # not yet done
                         if self.controller.is_lane_changing == False:
                             if self.controller.is_fin_to_lane_change:
                                 self.append_lane_change_sample = True
@@ -2239,63 +2321,70 @@ class CarlaEnv():
 
 
 
-                            if self.can_lane_change and self.append_lane_change_sample:
+                            if self.can_lane_change and self.append_lane_change_sample:  #after fin to lane change right now
+
                                 #finished to lane change##
                                 # self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
                                 #                              color=carla.Color(r=0, g=255, b=255), life_time=99)
                                 self.append_lane_change_sample = False
-                                sample = [decision_state, decision_x_static, self.pre_decision, decision_reward,
-                                          next_state, next_x_static, done]
-                                # print(sample)
-                                # print("1: lane_change_fin,save when decision time:  ",self.pre_decision,decision_x_static[0].item(), next_x_static[0].item(),decision_state[3::4],next_state[3::4])
 
-                                assert decision_reward is not None, "reward= none"
-                                self.agent.buffer.append(sample)
-                                self.agent.memorize_td_error(0)
+                                if self.nn_name =="ppo":
+                                    sample = [decision_state, decision_x_static, self.pre_decision, pre_action_prob, decision_reward, next_state]
+                                    self.agent.buffer.append(sample)
+                                else:
+                                    sample = [decision_state, decision_x_static, self.pre_decision, decision_reward, next_state, next_x_static, done]
+                                    # print(sample)
+                                    # print("1: lane_change_fin,save when decision time:  ",self.pre_decision,decision_x_static[0].item(), next_x_static[0].item(),decision_state[3::4],next_state[3::4])
+                                    assert decision_reward is not None, "reward= none"
+                                    self.agent.buffer.append(sample)
+                                    self.agent.memorize_td_error(0)
 
                             # print("fin to lane change and store lane change sample, decision =", decision)
 
-                            if self.decision == 0 and self.can_lane_change:
+                            ## 이거 어따쓰이는거 ##
+                            if self.decision == 0 and self.can_lane_change: # staright decision and not lane changing
                                 # print("store straight sample")
                                 # self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
-                                #                              color=carla.Color(r=0, g=0, b=255), life_time=999)
-                                sample = [state, x_static, self.decision, reward, next_state, next_x_static, done]
-                                # assert self.decision == 0, 'decision ix_static : s not 0'
-                                assert reward is not None, "reward= none"
-                                # print(sample)
+                                #                              color=carla.Color(r=0, g=0, b=255), life_time=
+                                if self.nn_name == "ppo":
+                                    sample = [state, x_static, self.decision, action_prob,  reward, next_state]
+                                    self.agent.buffer.append(sample)
+                                else:
+                                    sample = [state, x_static, self.decision, reward, next_state, next_x_static, done]
+                                    # assert self.decision == 0, 'decision ix_static : s not 0'
+                                    assert reward is not None, "reward= none"
+                                    # print(sample)
 
-                                self.agent.buffer.append(sample)
-                                # print(self.can_lane_change)
-                                self.agent.memorize_td_error(0)
-                                # self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
-                                #                              color=carla.Color(r=255, g=255, b=255), life_time=99)
-
-                                # print("2:  ",x_static)
-                                # print("straight:  ", x_static[0], self.decision, next_x_static[0])
-
-
+                                    self.agent.buffer.append(sample)
+                                    # print(self.can_lane_change)
+                                    self.agent.memorize_td_error(0)
+                            ## 이거 어따쓰이는거 ##
 
                         else: #is_lane_changing = True
-                            if self.decision != 0:
+                            if self.decision != 0: # lane change 실패한 경우
                                 # print("incomplete lane change and restart lane change")
                                 # self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
                                 #                              color=carla.Color(r=0, g=255, b=0), life_time=99)
                                 if previous_reward is None:
                                     previous_reward = reward
                                     #previous_reward -> negative reward ..?
-                                sample = [decision_state, decision_x_static, self.pre_decision, previous_reward-0.01, next_state, next_x_static, done]
+                                if self.nn_name == "ppo":
+                                    sample = [decision_state, decision_x_static, self.pre_decision, pre_action_prob, previous_reward-penalty, next_state]
+                                    self.agent.buffer.append(sample)
+                                else:
+                                    sample = [decision_state, decision_x_static, self.pre_decision, previous_reward-penalty, next_state, next_x_static, done]
 
-                                assert previous_reward is not None, "reward= none"
+                                    assert previous_reward is not None, "reward= none"
 
-                                # print("3:  ",x_static)
+                                    # print("3:  ",x_static)
 
-                                # print("3:  ",decision_x_static[0], self.pre_decision, x_static[0])
-                                # print("3, x_static : ", x_static[0].item())
+                                    # print("3:  ",decision_x_static[0], self.pre_decision, x_static[0])
+                                    # print("3, x_static : ", x_static[0].item())
 
-                                # print(sample)
+                                    # print(sample)
 
-                                self.agent.buffer.append(sample)
-                                self.agent.memorize_td_error(0)
+                                    self.agent.buffer.append(sample)
+                                    self.agent.memorize_td_error(0)
                             # else:
                             #     ## lane changing
                             #     self.world.debug.draw_string(self.player.get_location(), 'o', draw_shadow=True,
@@ -2304,38 +2393,48 @@ class CarlaEnv():
 
                             # print("lane_valid_distance :",x_static[2]*self.ROI_length,"reward:",reward,"decision:",decision,"before decision",before_safety_decision)
 ##-------------------------------- 안전 거리 미확보 시 안전 데이터
-                        # if self.side_leading_dr is not None:
-                        #
-                        #     if self.side_leading_dr>=0:
-                        #         d = self.side_lead_safe_distance
-                        #         x=  self.side_leading_dr.item()
-                        #         reward =- 20 / (d ** 3) * x ** 3 + 30 / (d ** 2) * (x ** 2) - 2
-                        #
-                        #     else:
-                        #         d = self.side_back_safe_distance
-                        #         x = abs(self.side_leading_dr.item())
-                        #         reward = -20/(d**3) * x**3+30/(d**2)*(x**2) -2
+                        if self.side_leading_dr is not None:
+
+                            if self.side_leading_dr>=0:
+                                d = self.side_lead_safe_distance
+                                x =  self.side_leading_dr.item()
+                                # reward =- 20 / (d ** 3) * x ** 3 + 30 / (d ** 2) * (x ** 2) - 2
+
+                            else:
+                                d = self.side_back_safe_distance
+                                x = abs(self.side_leading_dr.item())
+                                # reward = -20/(d**3) * x**3 + 30/(d**2)*(x**2) -2
 
                             # print("dr:",x, "d: ",d, "reward: ",reward)
+                            if self.nn_name == 'ppo':
+                                #['state','x_static', 'action',  'a_log_prob', 'reward', 'next_state']
+                                sample = [state, x_static, before_safety_decision, before_action_prob, penalty, None]
+                                self.agent.buffer.append(sample)
+
+                            else:
+                                sample = [state, x_static, before_safety_decision, reward, None, None, done]
+                                self.agent.buffer.append(sample)
+                                self.agent.memorize_td_error(0)
 ###----------------------------------
-                            sample = [state, x_static, before_safety_decision, reward, None, None, done]
-                            self.agent.buffer.append(sample)
-                            self.agent.memorize_td_error(0)
 
                         if self.decision_changed:
                             # if x_static[0] <=1.5:
                             #     print("lane 1 :", before_safety_decision)
                             # elif x_static[0]>3.5:
                             #     print("lane 4 :", before_safety_decision)
+                            if self.nn_name == "ppo":
+                                sample = [state, x_static, before_safety_decision, before_safety_decision, penalty, next_state]
+                                self.agent.buffer.append(sample)
 
-                            sample = [state, x_static, before_safety_decision, -10, None, None, done]
+                            else:
+                                sample = [state, x_static, before_safety_decision, penalty, None, None, done]
 
-                            # print("4:  ", x_static)
-                            # print(sample)
+                                # print("4:  ", x_static)
+                                # print(sample)
 
-                            self.agent.buffer.append(sample)
-                            self.agent.memorize_td_error(0)
-                            # print(self.decision, "can_lane_change:",self.can_lane_change)
+                                self.agent.buffer.append(sample)
+                                self.agent.memorize_td_error(0)
+                                # print(self.decision, "can_lane_change:",self.can_lane_change)
 
                         if self.decision !=0:
                             # need to plot string
@@ -2344,6 +2443,8 @@ class CarlaEnv():
                             decision_x_static = x_static
                             decision_reward = reward
                             self.pre_decision = self.decision
+                            if self.nn_name == 'ppo':
+                                pre_action_prob = action_prob
 
                         state = next_state
                         x_static = next_x_static
@@ -2393,7 +2494,7 @@ class CarlaEnv():
                         break
 
                     else:
-                        [__, _, decision, reward, next_state, next_x_static, done] = tmp
+                            [__, _, decision, reward, next_state, next_x_static, done] = tmp
 
                     # if time.time() - self.simul_time >= 5:
                     #     print("screenshot comeplete")

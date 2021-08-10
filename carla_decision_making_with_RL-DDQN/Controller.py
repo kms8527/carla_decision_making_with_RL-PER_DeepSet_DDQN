@@ -436,12 +436,15 @@ class Pure_puresuit_controller:
         self.error_a_dot = (self.error_a - self.error_a_pre)/dt
         # self.error_a_int += self.error_a * dt
         self.error_a_pre = self.error_a
+
         # [0.5, -0.004, 0.003]
-        p=0.3
-        i=-0.004
-        d=0.003
-        self.throttle = p* self.error_a + d*self.error_a_dot
+        # p=0.3
+        # i=-0.004
+        # d=0.003
+        # self.throttle = p* self.error_a + d*self.error_a_dot
         # print(error)
+
+        self.throttle = x_des_ddot
 
         # t= time.time()- self.acc_start_time
         # self.integral += math.exp(tau*t)*x_des_ddot*dt
